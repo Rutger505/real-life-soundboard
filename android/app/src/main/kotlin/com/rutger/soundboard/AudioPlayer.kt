@@ -23,7 +23,10 @@ class AudioPlayer {
     /** Prepare (or re-prepare) the audio for [index]. Safe to call repeatedly. */
     @Synchronized
     fun preload(context: Context, index: Int, uri: Uri) {
-        slots.remove(index)?.player?.release()
+        slots.remove(index)?.player?.let {
+            if (it == current) current = null
+            it.release()
+        }
         try {
             val mp = MediaPlayer()
             val slot = Slot(mp, ready = false)
