@@ -278,7 +278,7 @@ fn main() -> Result<()> {
     led.set_low()?;
 
     // Pins are type-erased in esp-idf-hal 0.46, so all 9 inputs share one type.
-    let mut buttons: [PinDriver<'_, Input>; 9] = [
+    let buttons: [PinDriver<'_, Input>; 9] = [
         PinDriver::input(pins.gpio4, Pull::Up)?,
         PinDriver::input(pins.gpio5, Pull::Up)?,
         PinDriver::input(pins.gpio12, Pull::Up)?,
