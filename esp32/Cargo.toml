@@ -9,14 +9,15 @@ name = "soundboard-esp32"
 harness = false
 
 [dependencies]
-esp-idf-svc = { version = "0.49", features = ["experimental"] }
-esp-idf-hal = "0.44"
+# 0.52 fixes the `c_char` vs `i8` mismatch on newer Xtensa rustc toolchains (#570)
+esp-idf-svc = { version = "0.52", features = ["experimental"] }
+esp-idf-hal = "0.46"
 embedded-hal = "1"
 log = "0.4"
 anyhow = "1"
 
 [build-dependencies]
-embuild = "0.32"
+embuild = "0.33"
 
 [profile.release]
 opt-level = "s"
