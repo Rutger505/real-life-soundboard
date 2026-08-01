@@ -9,5 +9,7 @@ linker = "ldproxy"
 rustflags = ["--cfg", "espidf_time64"]
 
 [env]
-ESP_IDF_VERSION = "v5.2.2"
+# esp-idf-svc 0.52 targets ESP-IDF 5.4/5.5 (needs newer BLE symbols like
+# esp_ble_gattc_enh_open / esp_ble_conn_params_t that don't exist in 5.2)
+ESP_IDF_VERSION = "v5.4.2"
 MCU = "esp32"
