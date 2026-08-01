@@ -41,7 +41,9 @@ const CCCD_UUID: u16 = 0x2902;
 const APP_ID: u16 = 0;
 /// GPIOs wired to the 9 buttons (index 0..=8). All use internal pull-ups, so
 /// a press pulls the pin low. LED is on GPIO2.
-const BUTTON_PINS: [u8; 9] = [4, 5, 12, 13, 14, 15, 16, 17, 18];
+// NB: GPIO5 avoided — it's a strapping pin and is unreliable as an input on
+// some boards. Button index 1 uses GPIO23 instead.
+const BUTTON_PINS: [u8; 9] = [4, 23, 12, 13, 14, 15, 16, 17, 18];
 
 // Shorthand types for the 'static Bluedroid stack handles.
 type SbBtDriver = BtDriver<'static, Ble>;
@@ -314,7 +316,7 @@ fn main() -> Result<()> {
     // Pins are type-erased in esp-idf-hal 0.46, so all 9 inputs share one type.
     let buttons: [PinDriver<'_, Input>; 9] = [
         PinDriver::input(pins.gpio4, Pull::Up)?,
-        PinDriver::input(pins.gpio5, Pull::Up)?,
+        PinDriver::input(pins.gpio23, Pull::Up)?,
         PinDriver::input(pins.gpio12, Pull::Up)?,
         PinDriver::input(pins.gpio13, Pull::Up)?,
         PinDriver::input(pins.gpio14, Pull::Up)?,

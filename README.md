@@ -20,7 +20,7 @@ The Android app runs a **foreground service**, so the BLE connection and audio p
 | Button | GPIO | LED  | GPIO |
 |--------|------|------|------|
 | 1      | 4    | LED+ | 2    |
-| 2      | 5    |      |      |
+| 2      | 23   |      |      |
 | 3      | 12   |      |      |
 | 4      | 13   |      |      |
 | 5      | 14   |      |      |
