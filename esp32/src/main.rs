@@ -14,7 +14,7 @@
 
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use enumset::enum_set;
@@ -254,12 +254,45 @@ impl Server {
     }
 }
 
-fn blink_led(led: &mut PinDriver<'_, Output>, times: u8) {
-    for _ in 0..times {
-        led.set_high().ok();
-        thread::sleep(Duration::from_millis(80));
-        led.set_low().ok();
-        thread::sleep(Duration::from_millis(80));
+/// Non-blocking LED blinker: `start()` schedules a burst of blinks and
+/// `update()` (called every loop tick) drives the pin from timestamps, so the
+/// button scanning loop is never blocked by `sleep`.
+struct LedBlinker<'d> {
+    led: PinDriver<'d, Output>,
+    toggles_left: u32,
+    next_at: Instant,
+    interval: Duration,
+}
+
+impl<'d> LedBlinker<'d> {
+    fn new(led: PinDriver<'d, Output>) -> Self {
+        Self {
+            led,
+            toggles_left: 0,
+            next_at: Instant::now(),
+            interval: Duration::from_millis(80),
+        }
+    }
+
+    /// Blink `times` times (on/off), replacing any blink already in progress.
+    fn start(&mut self, times: u8) {
+        self.toggles_left = times as u32 * 2;
+        self.next_at = Instant::now();
+    }
+
+    /// Advance the blink state; call once per loop iteration.
+    fn update(&mut self) {
+        if self.toggles_left == 0 || Instant::now() < self.next_at {
+            return;
+        }
+        // Even count = start of a cycle -> LED on; odd = LED off.
+        if self.toggles_left % 2 == 0 {
+            self.led.set_high().ok();
+        } else {
+            self.led.set_low().ok();
+        }
+        self.toggles_left -= 1;
+        self.next_at = Instant::now() + self.interval;
     }
 }
 
@@ -276,6 +309,7 @@ fn main() -> Result<()> {
 
     let mut led = PinDriver::output(pins.gpio2)?;
     led.set_low()?;
+    let mut blinker = LedBlinker::new(led);
 
     // Pins are type-erased in esp-idf-hal 0.46, so all 9 inputs share one type.
     let buttons: [PinDriver<'_, Input>; 9] = [
@@ -316,11 +350,12 @@ fn main() -> Result<()> {
             let pressed = buttons[i].is_low();
             if pressed && !prev_pressed[i] {
                 info!("Button {i} pressed");
-                blink_led(&mut led, 2);
+                blinker.start(2);
                 server.notify_button(i as u8);
             }
             prev_pressed[i] = pressed;
         }
+        blinker.update();
         thread::sleep(Duration::from_millis(20));
     }
 }
