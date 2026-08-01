@@ -22,3 +22,5 @@ embuild = "0.33"
 
 [profile.release]
 opt-level = "s"
+lto = "fat"
+codegen-units = 1
