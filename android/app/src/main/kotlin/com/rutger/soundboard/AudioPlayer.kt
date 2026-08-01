@@ -16,7 +16,10 @@ class AudioPlayer {
             setDataSource(context, uri)
             prepare()
             start()
-            setOnCompletionListener { release() }
+            setOnCompletionListener { mp ->
+                mp.release()
+                if (mediaPlayer === mp) mediaPlayer = null
+            }
         }
     }
 

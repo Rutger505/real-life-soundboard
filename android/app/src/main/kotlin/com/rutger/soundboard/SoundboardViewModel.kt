@@ -16,33 +16,25 @@ data class SoundEntry(
     val displayName: String? = null,
 )
 
+/**
+ * Owns the per-slot audio configuration (persisted in prefs) and exposes the
+ * connection/playback state that lives in [SoundboardService] via
+ * [SoundboardState]. Playback + BLE run in the service, not here, so they keep
+ * working when this ViewModel/Activity is gone.
+ */
 class SoundboardViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs: SharedPreferences =
         application.getSharedPreferences("soundboard_prefs", Context.MODE_PRIVATE)
-
-    private val audioPlayer = AudioPlayer()
 
     private val _sounds = MutableStateFlow(
         List(9) { i -> loadEntry(i) }
     )
     val sounds: StateFlow<List<SoundEntry>> = _sounds.asStateFlow()
 
-    private val _bleConnected = MutableStateFlow(false)
-    val bleConnected: StateFlow<Boolean> = _bleConnected.asStateFlow()
-
-    private val _activeButton = MutableStateFlow<Int?>( null)
-    val activeButton: StateFlow<Int?> = _activeButton.asStateFlow()
-
-    private val bleManager = BleManager(
-        context = application,
-        onButtonPressed = { index -> onButtonPressed(index) },
-        onConnectionStateChanged = { connected -> _bleConnected.value = connected },
-    )
-
-    init {
-        bleManager.startScan()
-    }
+    // Connection + playback state come straight from the service.
+    val bleConnected: StateFlow<Boolean> = SoundboardState.bleConnected.asStateFlow()
+    val activeButton: StateFlow<Int?> = SoundboardState.activeButton.asStateFlow()
 
     fun setAudioFile(id: Int, uri: Uri) {
         val context = getApplication<Application>()
@@ -60,17 +52,10 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
         _sounds.value = updated
     }
 
+    /** Manual press from the UI — routed through the service so it owns playback. */
     fun onButtonPressed(index: Int) {
         if (index !in 0..8) return
-        _activeButton.value = index
-        val entry = _sounds.value.getOrNull(index)
-        val uri = entry?.uri ?: return
-        val context = getApplication<Application>()
-        audioPlayer.play(context, uri)
-        // Clear active after short delay (UI feedback)
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            if (_activeButton.value == index) _activeButton.value = null
-        }, 300)
+        SoundboardService.play(getApplication(), index)
     }
 
     private fun loadEntry(id: Int): SoundEntry {
@@ -85,11 +70,5 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
             val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
         }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        bleManager.disconnect()
-        audioPlayer.release()
     }
 }

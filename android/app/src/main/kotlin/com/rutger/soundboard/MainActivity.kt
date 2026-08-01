@@ -22,6 +22,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         requestBlePermissions()
+        SoundboardService.start(this)
 
         setContent {
             MaterialTheme {
@@ -33,16 +34,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestBlePermissions() {
-        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_SCAN,
-            )
+        val perms = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            perms += Manifest.permission.BLUETOOTH_CONNECT
+            perms += Manifest.permission.BLUETOOTH_SCAN
         } else {
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-            )
+            perms += Manifest.permission.ACCESS_FINE_LOCATION
         }
-        permissionLauncher.launch(perms)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms += Manifest.permission.POST_NOTIFICATIONS
+        }
+        permissionLauncher.launch(perms.toTypedArray())
     }
 }

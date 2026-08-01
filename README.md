@@ -6,6 +6,8 @@ A Bluetooth soundboard: press a physical button on an ESP32 and the paired Andro
 
 9 physical buttons wired to an ESP32 send BLE GATT notifications to an Android app. Each button maps to an audio file you configure via the app. Press a button → hear a sound.
 
+The Android app runs a **foreground service**, so the BLE connection and audio playback keep working while you use your phone normally, with the screen off, or with the app closed. An ongoing notification shows the connection status and the last button that was pressed.
+
 ## Hardware
 
 - ESP32 dev board (any variant with 18+ GPIO pins)
