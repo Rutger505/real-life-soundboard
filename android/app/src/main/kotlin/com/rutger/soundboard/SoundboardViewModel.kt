@@ -50,6 +50,8 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
         val updated = _sounds.value.toMutableList()
         updated[id] = SoundEntry(id, uri, name)
         _sounds.value = updated
+        // Have the service preload the new file so playback stays instant.
+        SoundboardService.reload(context)
     }
 
     /** Manual press from the UI — routed through the service so it owns playback. */
