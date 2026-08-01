@@ -34,6 +34,7 @@ class SoundboardService : Service() {
         super.onCreate()
         prefs = getSharedPreferences("soundboard_prefs", Context.MODE_PRIVATE)
         audioPlayer = AudioPlayer()
+        reloadSlots()
 
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
@@ -50,9 +51,12 @@ class SoundboardService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_PLAY) {
-            val index = intent.getIntExtra(EXTRA_INDEX, -1)
-            if (index in 0..8) onButtonPressed(index)
+        when (intent?.action) {
+            ACTION_PLAY -> {
+                val index = intent.getIntExtra(EXTRA_INDEX, -1)
+                if (index in 0..8) onButtonPressed(index)
+            }
+            ACTION_RELOAD -> reloadSlots()
         }
         // Restart if killed by the system so the connection self-heals.
         return START_STICKY
@@ -64,10 +68,7 @@ class SoundboardService : Service() {
         SoundboardState.activeButton.value = index
         updateNotification()
 
-        val uriStr = prefs.getString("uri_$index", null)
-        if (uriStr != null) {
-            audioPlayer.play(this, Uri.parse(uriStr))
-        }
+        audioPlayer.play(index)
 
         // Clear the transient "active" highlight after a short delay.
         handler.postDelayed({
@@ -75,6 +76,18 @@ class SoundboardService : Service() {
                 SoundboardState.activeButton.value = null
             }
         }, 300)
+    }
+
+    /** (Re)prepare the MediaPlayers for all configured slots from prefs. */
+    private fun reloadSlots() {
+        for (i in 0..8) {
+            val uriStr = prefs.getString("uri_$i", null)
+            if (uriStr != null) {
+                audioPlayer.preload(this, i, Uri.parse(uriStr))
+            } else {
+                audioPlayer.clear(i)
+            }
+        }
     }
 
     private fun createNotificationChannel() {
@@ -131,11 +144,24 @@ class SoundboardService : Service() {
         private const val CHANNEL_ID = "soundboard_service"
         private const val NOTIF_ID = 1
         const val ACTION_PLAY = "com.rutger.soundboard.action.PLAY"
+        const val ACTION_RELOAD = "com.rutger.soundboard.action.RELOAD"
         const val EXTRA_INDEX = "index"
 
         /** Start the service in the foreground (safe to call repeatedly). */
         fun start(context: Context) {
             val intent = Intent(context, SoundboardService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** Ask the service to (re)preload all slots from prefs. */
+        fun reload(context: Context) {
+            val intent = Intent(context, SoundboardService::class.java).apply {
+                action = ACTION_RELOAD
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
