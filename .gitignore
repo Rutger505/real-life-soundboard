@@ -1,0 +1,16 @@
+# Rust / ESP-IDF
+esp32/target/
+esp32/.embuild/
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.DS_Store

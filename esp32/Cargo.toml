@@ -1,0 +1,22 @@
+[package]
+name = "soundboard-esp32"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+
+[[bin]]
+name = "soundboard-esp32"
+harness = false
+
+[dependencies]
+esp-idf-svc = { version = "0.49", features = ["experimental"] }
+esp-idf-hal = "0.44"
+embedded-hal = "1"
+log = "0.4"
+anyhow = "1"
+
+[build-dependencies]
+embuild = "0.32"
+
+[profile.release]
+opt-level = "s"
