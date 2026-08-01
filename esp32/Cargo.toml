@@ -13,6 +13,7 @@ harness = false
 esp-idf-svc = { version = "0.52", features = ["experimental"] }
 esp-idf-hal = "0.46"
 embedded-hal = "1"
+enumset = "1"
 log = "0.4"
 anyhow = "1"
 

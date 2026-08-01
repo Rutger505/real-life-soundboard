@@ -1,34 +1,260 @@
-use anyhow::Result;
-use esp_idf_hal::{
-    gpio::{Input, Output, PinDriver, Pull},
-    peripherals::Peripherals,
-};
-use esp_idf_svc::bt::{
-    BleEnabled, BtDriver,
-    ble::gap::{AdvConfiguration, EspBleGap},
-    ble::gatt::server::{
-        ConnectionId, EspGatts, GattsEvent, TransferId,
-    },
-    BtUuid,
-};
-use log::{error, info};
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+//! Real Live Soundboard — ESP32 firmware.
+//!
+//! 9 push buttons + 1 status LED. On a button press the LED blinks and the
+//! button index (0..=8) is sent as a 1-byte BLE GATT **notification** to the
+//! connected phone, which plays the configured audio clip.
+//!
+//! BLE layout:
+//! - Service       12345678-1234-1234-1234-123456789012
+//! - Characteristic 12345678-1234-1234-1234-123456789abc  (Notify + CCCD 0x2902)
+//!
+//! The phone subscribes to notifications on the characteristic; we notify every
+//! subscribed connection with `[index]`. Advertising restarts on (dis)connect
+//! so the phone can always (re)connect.
 
-const SERVICE_UUID: &str = "12345678-1234-1234-1234-123456789012";
-const CHAR_UUID: &str = "12345678-1234-1234-1234-123456789abc";
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
+use anyhow::Result;
+use enumset::enum_set;
+
+use esp_idf_hal::gpio::{Input, Output, PinDriver, Pull};
+use esp_idf_hal::peripherals::Peripherals;
+
+use esp_idf_svc::bt::ble::gap::{AdvConfiguration, BleGapEvent, EspBleGap};
+use esp_idf_svc::bt::ble::gatt::server::{EspGatts, GattsEvent};
+use esp_idf_svc::bt::ble::gatt::{
+    AutoResponse, GattCharacteristic, GattDescriptor, GattId, GattInterface, GattServiceId,
+    GattStatus, Handle, Permission, Property,
+};
+use esp_idf_svc::bt::{BdAddr, Ble, BtDriver, BtUuid};
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
+
+use log::{error, info};
 
 const DEVICE_NAME: &str = "Soundboard";
+const SERVICE_UUID: u128 = 0x12345678_1234_1234_1234_123456789012;
+const CHAR_UUID: u128 = 0x12345678_1234_1234_1234_123456789abc;
+const CCCD_UUID: u16 = 0x2902;
 
-struct BleState {
-    conn_id: Option<ConnectionId>,
-    attr_handle: Option<u16>,
+const APP_ID: u16 = 0;
+/// GPIOs wired to the 9 buttons (index 0..=8). All use internal pull-ups, so
+/// a press pulls the pin low. LED is on GPIO2.
+const BUTTON_PINS: [u8; 9] = [4, 5, 12, 13, 14, 15, 16, 17, 18];
+
+// Shorthand types for the 'static Bluedroid stack handles.
+type SbBtDriver = BtDriver<'static, Ble>;
+type SbGap = Arc<EspBleGap<'static, Ble, Arc<SbBtDriver>>>;
+type SbGatts = Arc<EspGatts<'static, Ble, Arc<SbBtDriver>>>;
+
+#[derive(Clone)]
+struct Connection {
+    conn_id: Handle,
+    peer: BdAddr,
+    subscribed: bool,
 }
 
-fn blink_led(led: &mut PinDriver<'_, impl esp_idf_hal::gpio::OutputPin, Output>, times: u8) {
+#[derive(Default)]
+struct State {
+    gatt_if: Option<GattInterface>,
+    service_handle: Option<Handle>,
+    char_handle: Option<Handle>,
+    cccd_handle: Option<Handle>,
+    connections: Vec<Connection>,
+}
+
+/// The BLE GATT soundboard server. Cloneable (all shared state behind `Arc`s)
+/// so it can be moved into the GAP/GATTS event callbacks.
+#[derive(Clone)]
+struct Server {
+    gap: SbGap,
+    gatts: SbGatts,
+    state: Arc<Mutex<State>>,
+}
+
+impl Server {
+    fn new(gap: SbGap, gatts: SbGatts) -> Self {
+        Self {
+            gap,
+            gatts,
+            state: Arc::new(Mutex::new(State::default())),
+        }
+    }
+
+    /// Advertising configuration (also (re)starts advertising once applied).
+    fn set_adv_conf(&self) -> Result<()> {
+        self.gap.set_adv_conf(&AdvConfiguration {
+            include_name: true,
+            include_txpower: false,
+            service_uuid: Some(BtUuid::uuid128(SERVICE_UUID)),
+            ..Default::default()
+        })?;
+        Ok(())
+    }
+
+    fn on_gap_event(&self, event: BleGapEvent) {
+        if let BleGapEvent::AdvertisingConfigured(_) = event {
+            if let Err(e) = self.gap.start_advertising() {
+                error!("start_advertising failed: {e:?}");
+            }
+        }
+    }
+
+    fn on_gatts_event(&self, gatt_if: GattInterface, event: GattsEvent) {
+        if let Err(e) = self.handle_gatts_event(gatt_if, event) {
+            error!("GATTS event handling failed: {e:?}");
+        }
+    }
+
+    fn handle_gatts_event(&self, gatt_if: GattInterface, event: GattsEvent) -> Result<()> {
+        match event {
+            GattsEvent::ServiceRegistered { status, app_id } => {
+                if matches!(status, GattStatus::Ok) && app_id == APP_ID {
+                    self.state.lock().unwrap().gatt_if = Some(gatt_if);
+                    self.gap.set_device_name(DEVICE_NAME)?;
+                    self.set_adv_conf()?;
+                    self.gatts.create_service(
+                        gatt_if,
+                        &GattServiceId {
+                            id: GattId {
+                                uuid: BtUuid::uuid128(SERVICE_UUID),
+                                inst_id: 0,
+                            },
+                            is_primary: true,
+                        },
+                        8,
+                    )?;
+                }
+            }
+            GattsEvent::ServiceCreated {
+                status,
+                service_handle,
+                ..
+            } => {
+                if matches!(status, GattStatus::Ok) {
+                    self.state.lock().unwrap().service_handle = Some(service_handle);
+                    self.gatts.start_service(service_handle)?;
+                    // Notify characteristic that carries the button index.
+                    self.gatts.add_characteristic(
+                        service_handle,
+                        &GattCharacteristic {
+                            uuid: BtUuid::uuid128(CHAR_UUID),
+                            permissions: enum_set!(Permission::Read),
+                            properties: enum_set!(Property::Notify),
+                            max_len: 1,
+                            auto_rsp: AutoResponse::ByApp,
+                        },
+                        &[],
+                    )?;
+                }
+            }
+            GattsEvent::CharacteristicAdded {
+                status,
+                attr_handle,
+                service_handle,
+                char_uuid,
+            } => {
+                if matches!(status, GattStatus::Ok)
+                    && char_uuid == BtUuid::uuid128(CHAR_UUID)
+                {
+                    self.state.lock().unwrap().char_handle = Some(attr_handle);
+                    // CCCD so the phone can enable notifications.
+                    self.gatts.add_descriptor(
+                        service_handle,
+                        &GattDescriptor {
+                            uuid: BtUuid::uuid16(CCCD_UUID),
+                            permissions: enum_set!(Permission::Read | Permission::Write),
+                        },
+                    )?;
+                }
+            }
+            GattsEvent::DescriptorAdded {
+                status,
+                attr_handle,
+                descr_uuid,
+                ..
+            } => {
+                if matches!(status, GattStatus::Ok) && descr_uuid == BtUuid::uuid16(CCCD_UUID) {
+                    self.state.lock().unwrap().cccd_handle = Some(attr_handle);
+                }
+            }
+            GattsEvent::PeerConnected { conn_id, addr, .. } => {
+                info!("Peer connected: {addr} (conn_id {conn_id})");
+                {
+                    let mut state = self.state.lock().unwrap();
+                    state.connections.push(Connection {
+                        conn_id,
+                        peer: addr,
+                        subscribed: false,
+                    });
+                }
+                // Keep advertising so additional phones can connect too.
+                self.set_adv_conf()?;
+            }
+            GattsEvent::PeerDisconnected { addr, .. } => {
+                info!("Peer disconnected: {addr}");
+                {
+                    let mut state = self.state.lock().unwrap();
+                    state.connections.retain(|c| c.peer != addr);
+                }
+                self.set_adv_conf()?;
+            }
+            GattsEvent::Write {
+                conn_id,
+                trans_id,
+                handle,
+                offset,
+                need_rsp,
+                value,
+                ..
+            } => {
+                // The only writable attribute is the CCCD: 0x0001 = subscribe
+                // to notifications, 0x0000 = unsubscribe.
+                let cccd_handle = self.state.lock().unwrap().cccd_handle;
+                if Some(handle) == cccd_handle && offset == 0 && value.len() >= 2 {
+                    let enabled = value[0] & 0x01 != 0;
+                    let mut state = self.state.lock().unwrap();
+                    if let Some(conn) = state
+                        .connections
+                        .iter_mut()
+                        .find(|c| c.conn_id == conn_id)
+                    {
+                        conn.subscribed = enabled;
+                        info!("conn {conn_id} notifications: {enabled}");
+                    }
+                }
+
+                if need_rsp {
+                    self.gatts
+                        .send_response(gatt_if, conn_id, trans_id, GattStatus::Ok, None)?;
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Notify every subscribed connection with the pressed button index.
+    fn notify_button(&self, index: u8) {
+        let state = self.state.lock().unwrap();
+        let (Some(gatt_if), Some(char_handle)) = (state.gatt_if, state.char_handle) else {
+            info!("Button {index}: BLE not ready, skipping notify");
+            return;
+        };
+        let payload = [index];
+        for conn in state.connections.iter().filter(|c| c.subscribed) {
+            if let Err(e) = self.gatts.notify(gatt_if, conn.conn_id, char_handle, &payload) {
+                error!("notify to {} failed: {e:?}", conn.peer);
+            } else {
+                info!("Notified {} of button {index}", conn.peer);
+            }
+        }
+    }
+}
+
+fn blink_led(led: &mut PinDriver<'_, Output>, times: u8) {
     for _ in 0..times {
         led.set_high().ok();
         thread::sleep(Duration::from_millis(80));
@@ -42,161 +268,59 @@ fn main() -> Result<()> {
     esp_idf_svc::log::EspLogger::initialize_default();
 
     let peripherals = Peripherals::take()?;
+    let nvs = EspDefaultNvsPartition::take()?;
 
-    let mut led = PinDriver::output(peripherals.pins.gpio2)?;
+    // Take the peripheral fields we need up front (distinct fields => partial moves).
+    let pins = peripherals.pins;
+    let modem = peripherals.modem;
+
+    let mut led = PinDriver::output(pins.gpio2)?;
     led.set_low()?;
 
-    let mut buttons = (
-        PinDriver::input(peripherals.pins.gpio4)?,
-        PinDriver::input(peripherals.pins.gpio5)?,
-        PinDriver::input(peripherals.pins.gpio12)?,
-        PinDriver::input(peripherals.pins.gpio13)?,
-        PinDriver::input(peripherals.pins.gpio14)?,
-        PinDriver::input(peripherals.pins.gpio15)?,
-        PinDriver::input(peripherals.pins.gpio16)?,
-        PinDriver::input(peripherals.pins.gpio17)?,
-        PinDriver::input(peripherals.pins.gpio18)?,
+    // Pins are type-erased in esp-idf-hal 0.46, so all 9 inputs share one type.
+    let mut buttons: [PinDriver<'_, Input>; 9] = [
+        PinDriver::input(pins.gpio4, Pull::Up)?,
+        PinDriver::input(pins.gpio5, Pull::Up)?,
+        PinDriver::input(pins.gpio12, Pull::Up)?,
+        PinDriver::input(pins.gpio13, Pull::Up)?,
+        PinDriver::input(pins.gpio14, Pull::Up)?,
+        PinDriver::input(pins.gpio15, Pull::Up)?,
+        PinDriver::input(pins.gpio16, Pull::Up)?,
+        PinDriver::input(pins.gpio17, Pull::Up)?,
+        PinDriver::input(pins.gpio18, Pull::Up)?,
+    ];
+    let _ = &BUTTON_PINS; // documented wiring; pins are taken explicitly above
+
+    // Bring up the BLE stack.
+    let bt: Arc<SbBtDriver> = Arc::new(BtDriver::new(modem, Some(nvs))?);
+    let server = Server::new(
+        Arc::new(EspBleGap::new(bt.clone())?),
+        Arc::new(EspGatts::new(bt.clone())?),
     );
 
-    buttons.0.set_pull(Pull::Up)?;
-    buttons.1.set_pull(Pull::Up)?;
-    buttons.2.set_pull(Pull::Up)?;
-    buttons.3.set_pull(Pull::Up)?;
-    buttons.4.set_pull(Pull::Up)?;
-    buttons.5.set_pull(Pull::Up)?;
-    buttons.6.set_pull(Pull::Up)?;
-    buttons.7.set_pull(Pull::Up)?;
-    buttons.8.set_pull(Pull::Up)?;
+    let gap_server = server.clone();
+    server.gap.subscribe(move |event| gap_server.on_gap_event(event))?;
 
-    let ble_state: Arc<Mutex<BleState>> = Arc::new(Mutex::new(BleState {
-        conn_id: None,
-        attr_handle: None,
-    }));
+    let gatts_server = server.clone();
+    server
+        .gatts
+        .subscribe(move |(gatt_if, event)| gatts_server.on_gatts_event(gatt_if, event))?;
 
-    let bt_driver = BtDriver::<BleEnabled>::new(peripherals.modem, None)?;
+    server.gatts.register_app(APP_ID)?;
+    info!("BLE soundboard server started as '{DEVICE_NAME}'");
 
-    let gap = EspBleGap::new(&bt_driver)?;
-
-    gap.set_device_name(DEVICE_NAME)?;
-
-    let adv_config = AdvConfiguration {
-        include_name: true,
-        include_txpower: false,
-        min_interval: 0x20,
-        max_interval: 0x40,
-        service_uuid: Some(BtUuid::uuid128(
-            0x12345678_1234_1234_1234_123456789012u128,
-        )),
-        ..Default::default()
-    };
-
-    gap.configure_adv_data(&adv_config)?;
-
-    let ble_state_gatts = Arc::clone(&ble_state);
-
-    let gatts = EspGatts::new(&bt_driver)?;
-
-    let service_uuid = BtUuid::uuid128(0x12345678_1234_1234_1234_123456789012u128);
-    let char_uuid = BtUuid::uuid128(0x12345678_1234_1234_1234_123456789abcu128);
-
-    gatts.register_callback(move |event| {
-        match event {
-            GattsEvent::ServiceRegistered { status, service_id } => {
-                info!("GATT service registered: {:?}", status);
-                // Add characteristic will be done after service start
-            }
-            GattsEvent::ServiceStarted { status, service_handle } => {
-                info!("GATT service started: {:?}", status);
-            }
-            GattsEvent::CharacteristicAdded {
-                status,
-                attr_handle,
-                service_handle,
-                char_uuid: _,
-            } => {
-                info!("Characteristic added, handle: {}", attr_handle);
-                if let Ok(mut state) = ble_state_gatts.lock() {
-                    state.attr_handle = Some(attr_handle);
-                }
-            }
-            GattsEvent::Connect { conn_id, .. } => {
-                info!("BLE client connected, conn_id: {}", conn_id);
-                if let Ok(mut state) = ble_state_gatts.lock() {
-                    state.conn_id = Some(conn_id);
-                }
-            }
-            GattsEvent::Disconnect { conn_id, .. } => {
-                info!("BLE client disconnected, conn_id: {}", conn_id);
-                if let Ok(mut state) = ble_state_gatts.lock() {
-                    if state.conn_id == Some(conn_id) {
-                        state.conn_id = None;
-                    }
-                }
-                // Restart advertising so phone can reconnect
-                // gap.start_advertising() would go here; gap is captured above
-            }
-            _ => {}
-        }
-    })?;
-
-    gatts.register_app(0)?;
-
-    gap.start_advertising()?;
-
-    info!("BLE advertising started as '{}'", DEVICE_NAME);
-
-    // Track previous button states for edge detection
-    let mut prev_states = [true; 9];
-    // Debounce counters
-    let mut debounce = [0u8; 9];
-
+    // Edge-detected, poll-debounced button scanning.
+    let mut prev_pressed = [false; 9];
     loop {
-        let raw_states = [
-            buttons.0.is_low(),
-            buttons.1.is_low(),
-            buttons.2.is_low(),
-            buttons.3.is_low(),
-            buttons.4.is_low(),
-            buttons.5.is_low(),
-            buttons.6.is_low(),
-            buttons.7.is_low(),
-            buttons.8.is_low(),
-        ];
-
         for i in 0..9 {
-            if raw_states[i] {
-                // Button pressed (active low)
-                debounce[i] = debounce[i].saturating_add(1);
-                if debounce[i] == 1 && prev_states[i] {
-                    // Confirmed press on first detection (debounce via poll interval)
-                    info!("Button {} pressed", i);
-
-                    blink_led(&mut led, 2);
-
-                    let state = ble_state.lock().unwrap();
-                    if let (Some(conn_id), Some(attr_handle)) =
-                        (state.conn_id, state.attr_handle)
-                    {
-                        let payload = [i as u8];
-                        if let Err(e) =
-                            gatts.send_indicate(conn_id, attr_handle, &payload, true)
-                        {
-                            error!("Failed to send notification: {:?}", e);
-                        } else {
-                            info!("Sent BLE notification: button {}", i);
-                        }
-                    } else {
-                        info!("No BLE client connected, skipping notification");
-                    }
-
-                    prev_states[i] = false;
-                }
-            } else {
-                debounce[i] = 0;
-                prev_states[i] = true;
+            let pressed = buttons[i].is_low();
+            if pressed && !prev_pressed[i] {
+                info!("Button {i} pressed");
+                blink_led(&mut led, 2);
+                server.notify_button(i as u8);
             }
+            prev_pressed[i] = pressed;
         }
-
         thread::sleep(Duration::from_millis(20));
     }
 }
