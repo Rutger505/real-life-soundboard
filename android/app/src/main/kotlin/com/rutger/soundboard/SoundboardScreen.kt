@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -38,15 +40,18 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // Keep all content inside the safe area, so nothing lands under the
+            // camera cutout, status bar or nav bar.
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(16.dp),
+        // Center the grid vertically in the available (safe) space.
+        verticalArrangement = Arrangement.Center,
     ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             items(9) { index ->
                 SoundButton(
@@ -55,12 +60,14 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
                     onFileSelected = { uri -> viewModel.setAudioFile(index, uri) },
                     onBrowseMyInstants = { browserSlot = index },
                     onPress = { viewModel.onButtonPressed(index) },
+                    onClear = { viewModel.clearSlot(index) },
                 )
             }
         }
 
-        // Connection status lives at the bottom so it never sits under the
-        // phone's camera cutout / status bar area.
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Connection status sits just under the centered grid.
         BleStatusBar(connected = bleConnected)
     }
 
@@ -106,6 +113,7 @@ fun SoundButton(
     onFileSelected: (Uri) -> Unit,
     onBrowseMyInstants: () -> Unit,
     onPress: () -> Unit,
+    onClear: () -> Unit,
 ) {
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -117,6 +125,10 @@ fun SoundButton(
         else MaterialTheme.colorScheme.surfaceVariant,
         label = "button_color",
     )
+
+    val hasAudio = entry.uri != null
+    val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary
+    else MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(
         modifier = Modifier
@@ -130,8 +142,7 @@ fun SoundButton(
         Text(
             text = "${entry.id + 1}",
             fontSize = 20.sp,
-            color = if (isActive) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor,
         )
 
         Text(
@@ -139,32 +150,35 @@ fun SoundButton(
             style = MaterialTheme.typography.bodySmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            color = if (isActive) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (entry.uri != null) {
-                TextButton(
-                    onClick = onPress,
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                ) {
-                    Text("▶", fontSize = 12.sp)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Source row: always available, so a slot can be re-sourced from
+            // either a local file or MyInstants even after one is set.
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
+                SlotAction("🔍", onClick = onBrowseMyInstants)
+            }
+
+            // Playback row: only when a sound is loaded — play or empty it.
+            if (hasAudio) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    SlotAction("▶", onClick = onPress)
+                    SlotAction("🗑", onClick = onClear)
                 }
             }
-            TextButton(
-                onClick = { launcher.launch(arrayOf("audio/*")) },
-                contentPadding = PaddingValues(horizontal = 4.dp),
-            ) {
-                Text("📂", fontSize = 12.sp)
-            }
-            TextButton(
-                onClick = onBrowseMyInstants,
-                contentPadding = PaddingValues(horizontal = 4.dp),
-            ) {
-                Text("🔍", fontSize = 12.sp)
-            }
         }
+    }
+}
+
+@Composable
+private fun SlotAction(label: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 4.dp),
+    ) {
+        Text(label, fontSize = 12.sp)
     }
 }
 

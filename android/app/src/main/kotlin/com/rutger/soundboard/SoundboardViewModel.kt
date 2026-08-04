@@ -111,6 +111,20 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
         SoundboardService.reload(context)
     }
 
+    /** Empty a slot: forget its audio and tell the service to drop the preload. */
+    fun clearSlot(id: Int) {
+        if (id !in 0..8) return
+        val context = getApplication<Application>()
+        prefs.edit()
+            .remove("uri_$id")
+            .remove("name_$id")
+            .apply()
+        val updated = _sounds.value.toMutableList()
+        updated[id] = SoundEntry(id)
+        _sounds.value = updated
+        SoundboardService.reload(context)
+    }
+
     /** Persist a slot's uri/name to prefs and update the observable list. */
     private fun storeSlot(id: Int, uri: Uri, name: String?) {
         prefs.edit()
