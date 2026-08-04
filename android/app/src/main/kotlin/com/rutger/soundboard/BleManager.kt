@@ -25,12 +25,22 @@ class BleManager(
     private val onButtonPressed: (Int) -> Unit,
     private val onConnectionStateChanged: (Boolean) -> Unit,
 ) {
+    private companion object {
+        const val FIRST_RECONNECT_DELAY_MS = 5_000L
+        const val BACKOFF_RECONNECT_DELAY_MS = 10_000L
+    }
+
     private val bluetoothManager =
         context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val bluetoothAdapter: BluetoothAdapter? get() = bluetoothManager.adapter
     private var bluetoothGatt: BluetoothGatt? = null
     private var scanning = false
     private val handler = Handler(Looper.getMainLooper())
+
+    // Reconnect backoff: the first scan after a drop is quick; if the ESP32
+    // stays away we back off and keep scanning at a low-power cadence so we
+    // don't drain the battery hunting for a device that's simply switched off.
+    private var reconnectAttempts = 0
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -49,6 +59,8 @@ class BleManager(
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     Log.i(TAG, "Connected to GATT server")
+                    // Reset backoff so the next drop retries quickly again.
+                    reconnectAttempts = 0
                     gatt.discoverServices()
                     onConnectionStateChanged(true)
                 }
@@ -125,8 +137,15 @@ class BleManager(
         val filter = ScanFilter.Builder()
             .setServiceUuid(android.os.ParcelUuid(SERVICE_UUID))
             .build()
+        // First attempt scans aggressively for a fast reconnect; after that we
+        // drop to LOW_POWER, which is far gentler on the battery while waiting.
+        val scanMode = if (reconnectAttempts == 0) {
+            ScanSettings.SCAN_MODE_LOW_LATENCY
+        } else {
+            ScanSettings.SCAN_MODE_LOW_POWER
+        }
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(scanMode)
             .build()
         scanning = true
         scanner.startScan(listOf(filter), settings, scanCallback)
@@ -147,10 +166,13 @@ class BleManager(
     }
 
     private fun scheduleReconnect() {
+        // 5s for the first retry, then back off to a steady 10s low-power cadence.
+        val delayMs = if (reconnectAttempts == 0) FIRST_RECONNECT_DELAY_MS else BACKOFF_RECONNECT_DELAY_MS
+        reconnectAttempts++
         handler.postDelayed({
-            Log.i(TAG, "Attempting reconnect...")
+            Log.i(TAG, "Attempting reconnect (attempt $reconnectAttempts)...")
             startScan()
-        }, 5_000)
+        }, delayMs)
     }
 
     fun disconnect() {
