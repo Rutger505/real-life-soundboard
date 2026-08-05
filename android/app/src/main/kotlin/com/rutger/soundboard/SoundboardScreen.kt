@@ -130,51 +130,40 @@ fun SoundButton(
     val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary
     else MaterialTheme.colorScheme.onSurfaceVariant
 
-    // Box lets the action buttons overlay the bottom of the tile (like
-    // position:absolute) so they never steal vertical space from the name.
-    Box(
+    // Plain vertical flow: every child takes its own natural size, so the
+    // number, the (possibly multi-line) sound name and both button rows are
+    // always fully visible and the tile grows to fit its content.
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 132.dp)
             .background(bgColor, shape = RoundedCornerShape(12.dp))
             .border(1.dp, MaterialTheme.colorScheme.outline, shape = RoundedCornerShape(12.dp))
             .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // Number + name fill the tile and stay centered; the button overlay
-        // sits on top of the lower area, so the name is always readable.
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = "${entry.id + 1}",
-                fontSize = 20.sp,
-                color = contentColor,
-            )
-            Text(
-                text = entry.displayName ?: "—",
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = contentColor,
-            )
+        Text(
+            text = "${entry.id + 1}",
+            fontSize = 20.sp,
+            color = contentColor,
+        )
+
+        Text(
+            text = entry.displayName ?: "—",
+            style = MaterialTheme.typography.bodySmall,
+            color = contentColor,
+        )
+
+        // Source row.
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
+            SlotAction("🔍", onClick = onBrowseMyInstants)
         }
 
-        // Action buttons overlaid at the bottom (2x2), so all four are visible
-        // on every tile without pushing the name out.
-        Column(
-            modifier = Modifier.align(Alignment.BottomCenter),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
-                SlotAction("🔍", onClick = onBrowseMyInstants)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                SlotAction("▶", enabled = hasAudio, onClick = onPress)
-                SlotAction("🗑", enabled = hasAudio, onClick = onClear)
-            }
+        // Playback row: always shown, disabled when the slot is empty.
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            SlotAction("▶", enabled = hasAudio, onClick = onPress)
+            SlotAction("🗑", enabled = hasAudio, onClick = onClear)
         }
     }
 }
