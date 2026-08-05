@@ -135,7 +135,7 @@ fun SoundButton(
             // A fixed min height (instead of a strict square) guarantees room
             // for the number, name and BOTH action rows without clipping.
             .fillMaxWidth()
-            .heightIn(min = 132.dp)
+            .heightIn(min = 156.dp)
             .background(bgColor, shape = RoundedCornerShape(12.dp))
             .border(1.dp, MaterialTheme.colorScheme.outline, shape = RoundedCornerShape(12.dp))
             .padding(8.dp),
@@ -157,30 +157,33 @@ fun SoundButton(
             modifier = Modifier.weight(1f),
         )
 
-        // All slot actions on a single row so both source (📂🔍) and, when a
-        // sound is loaded, playback (▶🗑) fit inside the tile.
+        // Source row: always available, so a slot can be re-sourced from a
+        // local file or MyInstants even after one is set.
         Row(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Source actions: always available, so a slot can be re-sourced
-            // from a local file or MyInstants even after one is set.
             SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
             SlotAction("🔍", onClick = onBrowseMyInstants)
+        }
 
-            // Playback actions: only when a sound is loaded — play or empty it.
-            if (hasAudio) {
-                SlotAction("▶", onClick = onPress)
-                SlotAction("🗑", onClick = onClear)
-            }
+        // Playback row: ALWAYS shown so play/trash are visible on every tile.
+        // When no sound is loaded the actions are disabled (greyed out).
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SlotAction("▶", enabled = hasAudio, onClick = onPress)
+            SlotAction("🗑", enabled = hasAudio, onClick = onClear)
         }
     }
 }
 
 @Composable
-private fun SlotAction(label: String, onClick: () -> Unit) {
+private fun SlotAction(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     TextButton(
         onClick = onClick,
+        enabled = enabled,
         contentPadding = PaddingValues(horizontal = 4.dp),
     ) {
         Text(label, fontSize = 12.sp)
