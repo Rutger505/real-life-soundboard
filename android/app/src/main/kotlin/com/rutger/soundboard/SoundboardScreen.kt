@@ -130,51 +130,51 @@ fun SoundButton(
     val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary
     else MaterialTheme.colorScheme.onSurfaceVariant
 
-    Column(
+    // Box lets the action buttons overlay the bottom of the tile (like
+    // position:absolute) so they never steal vertical space from the name.
+    Box(
         modifier = Modifier
-            // A fixed min height (instead of a strict square) guarantees room
-            // for the number, name and BOTH action rows without clipping.
             .fillMaxWidth()
-            .heightIn(min = 156.dp)
+            .heightIn(min = 132.dp)
             .background(bgColor, shape = RoundedCornerShape(12.dp))
             .border(1.dp, MaterialTheme.colorScheme.outline, shape = RoundedCornerShape(12.dp))
             .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            text = "${entry.id + 1}",
-            fontSize = 20.sp,
-            color = contentColor,
-        )
-
-        Text(
-            text = entry.displayName ?: "—",
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            color = contentColor,
-            modifier = Modifier.weight(1f),
-        )
-
-        // Source row: always available, so a slot can be re-sourced from a
-        // local file or MyInstants even after one is set.
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // Number + name fill the tile and stay centered; the button overlay
+        // sits on top of the lower area, so the name is always readable.
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
-            SlotAction("🔍", onClick = onBrowseMyInstants)
+            Text(
+                text = "${entry.id + 1}",
+                fontSize = 20.sp,
+                color = contentColor,
+            )
+            Text(
+                text = entry.displayName ?: "—",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = contentColor,
+            )
         }
 
-        // Playback row: ALWAYS shown so play/trash are visible on every tile.
-        // When no sound is loaded the actions are disabled (greyed out).
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // Action buttons overlaid at the bottom (2x2), so all four are visible
+        // on every tile without pushing the name out.
+        Column(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SlotAction("▶", enabled = hasAudio, onClick = onPress)
-            SlotAction("🗑", enabled = hasAudio, onClick = onClear)
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
+                SlotAction("🔍", onClick = onBrowseMyInstants)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                SlotAction("▶", enabled = hasAudio, onClick = onPress)
+                SlotAction("🗑", enabled = hasAudio, onClick = onClear)
+            }
         }
     }
 }
