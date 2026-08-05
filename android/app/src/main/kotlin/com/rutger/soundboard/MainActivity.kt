@@ -5,8 +5,10 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 
@@ -19,7 +21,15 @@ class MainActivity : ComponentActivity() {
     ) { /* proceed regardless — BleManager checks internally */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // Light UI background → use dark status-bar / nav-bar icons so the
+        // system indicators (clock, battery, signal) stay visible.
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
 
         requestBlePermissions()
         SoundboardService.start(this)

@@ -132,12 +132,15 @@ fun SoundButton(
 
     Column(
         modifier = Modifier
-            .aspectRatio(1f)
+            // A fixed min height (instead of a strict square) guarantees room
+            // for the number, name and BOTH action rows without clipping.
+            .fillMaxWidth()
+            .heightIn(min = 132.dp)
             .background(bgColor, shape = RoundedCornerShape(12.dp))
             .border(1.dp, MaterialTheme.colorScheme.outline, shape = RoundedCornerShape(12.dp))
             .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             text = "${entry.id + 1}",
@@ -151,22 +154,24 @@ fun SoundButton(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             color = contentColor,
+            modifier = Modifier.weight(1f),
         )
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Source row: always available, so a slot can be re-sourced from
-            // either a local file or MyInstants even after one is set.
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
-                SlotAction("🔍", onClick = onBrowseMyInstants)
-            }
+        // All slot actions on a single row so both source (📂🔍) and, when a
+        // sound is loaded, playback (▶🗑) fit inside the tile.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Source actions: always available, so a slot can be re-sourced
+            // from a local file or MyInstants even after one is set.
+            SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
+            SlotAction("🔍", onClick = onBrowseMyInstants)
 
-            // Playback row: only when a sound is loaded — play or empty it.
+            // Playback actions: only when a sound is loaded — play or empty it.
             if (hasAudio) {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    SlotAction("▶", onClick = onPress)
-                    SlotAction("🗑", onClick = onClear)
-                }
+                SlotAction("▶", onClick = onPress)
+                SlotAction("🗑", onClick = onClear)
             }
         }
     }
