@@ -25,6 +25,14 @@ class AudioPlayer {
     /** App context, captured on first [preload], used to force the media volume. */
     private var appContext: Context? = null
 
+    /**
+     * Media volume that was in effect before we cranked it to max. Saved on the
+     * first play of a burst and restored once nothing is playing anymore, so
+     * the phone's volume goes back to what the user had set.
+     */
+    private var savedMediaVolume: Int? = null
+    private var activePlayers = 0
+
     private val mediaAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -48,6 +56,7 @@ class AudioPlayer {
                 slot.ready = false
                 true
             }
+            mp.setOnCompletionListener { onPlaybackFinished() }
             mp.setDataSource(context, uri)
             mp.prepareAsync() // non-blocking; readiness flips in the listener
             slots[index] = slot
@@ -77,20 +86,36 @@ class AudioPlayer {
         // comes out loud even if the phone's media volume is turned down or
         // the ringer is silenced (media is a separate stream from ring/notif).
         forceMediaVolumeMax()
-        // One sound at a time: stop whatever is currently playing.
-        current?.let { if (it != slot.player && it.isPlaying) it.pause() }
+        // One sound at a time: stop whatever is currently playing. Pausing an
+        // active player won't fire its completion listener, so decrement here.
+        current?.let {
+            if (it != slot.player && it.isPlaying) {
+                it.pause()
+                if (activePlayers > 0) activePlayers--
+            }
+        }
         slot.player.seekTo(0)
         slot.player.start()
+        activePlayers++
         current = slot.player
     }
 
-    /** Crank STREAM_MUSIC to its maximum. No-op if we have no context yet. */
+    /**
+     * Crank STREAM_MUSIC to its maximum, remembering the previous level the
+     * first time so [restoreMediaVolume] can put it back. No-op without context.
+     */
     private fun forceMediaVolumeMax() {
         val ctx = appContext ?: return
         try {
             val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            if (am.getStreamVolume(AudioManager.STREAM_MUSIC) != max) {
+            val currentVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+            // Only capture the user's level once per burst, and never capture
+            // our own max (so overlapping plays don't overwrite the saved value).
+            if (savedMediaVolume == null && currentVol != max) {
+                savedMediaVolume = currentVol
+            }
+            if (currentVol != max) {
                 am.setStreamVolume(AudioManager.STREAM_MUSIC, max, 0)
             }
         } catch (e: Exception) {
@@ -98,8 +123,31 @@ class AudioPlayer {
         }
     }
 
+    /** Called when a player finishes; restore volume once nothing is playing. */
+    @Synchronized
+    private fun onPlaybackFinished() {
+        if (activePlayers > 0) activePlayers--
+        if (activePlayers == 0) restoreMediaVolume()
+    }
+
+    /** Put STREAM_MUSIC back to the level the user had before we raised it. */
+    private fun restoreMediaVolume() {
+        val ctx = appContext ?: return
+        val prev = savedMediaVolume ?: return
+        savedMediaVolume = null
+        try {
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, prev, 0)
+        } catch (e: Exception) {
+            Log.w("AudioPlayer", "Failed to restore media volume", e)
+        }
+    }
+
     @Synchronized
     fun release() {
+        // Make sure we don't leave the phone stuck at max volume.
+        restoreMediaVolume()
+        activePlayers = 0
         slots.values.forEach { it.player.release() }
         slots.clear()
         current = null
