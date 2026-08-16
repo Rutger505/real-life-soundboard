@@ -10,7 +10,7 @@
 //!
 //! - GPIO wakeup from light sleep is **level**-triggered only, and
 //!   `gpio_wakeup_enable` writes the pin's interrupt type, so these pins
-//!   interrupt on "low level" rather than on a falling edge.
+//!   interrupt on "high level" rather than on a rising edge.
 //! - The ESP-IDF HAL masks a pin's interrupt from inside the ISR (otherwise a
 //!   level-triggered pin would re-enter forever and trip the watchdog).
 //!
@@ -54,17 +54,17 @@ pub struct ButtonScanner<'d> {
 
 impl<'d> ButtonScanner<'d> {
     /// Wire up interrupts and light-sleep wakeup for the given pins, which are
-    /// expected to be inputs with a pull-up (pressed = low).
+    /// expected to be inputs with a pull-down (pressed = high).
     pub fn new(mut pins: [PinDriver<'d, Input>; COUNT]) -> Result<Self, EspError> {
         // Bound to the calling task, so the scanner must be used from the task
         // that constructs it.
         let notification = Notification::new();
 
         for (index, pin) in pins.iter_mut().enumerate() {
-            pin.set_interrupt_type(InterruptType::LowLevel)?;
+            pin.set_interrupt_type(InterruptType::HighLevel)?;
             // Also lets the press wake the chip out of light sleep. Sets the
             // interrupt type again to the same value.
-            sleep::gpio::configure_light(pin.pin(), Level::Low)?;
+            sleep::gpio::configure_light(pin.pin(), Level::High)?;
 
             let notifier = notification.notifier();
             let bit = NonZeroU32::new(1 << index).expect("index < COUNT < 32");
@@ -121,7 +121,7 @@ impl<'d> ButtonScanner<'d> {
     }
 
     fn all_released(&self) -> bool {
-        self.pins.iter().all(|pin| pin.is_high())
+        self.pins.iter().all(|pin| pin.is_low())
     }
 
     /// Read the pins and return the newly pressed, debounced buttons.
@@ -133,7 +133,7 @@ impl<'d> ButtonScanner<'d> {
         let mut pressed = 0;
 
         for index in 0..COUNT {
-            let down = self.pins[index].is_low();
+            let down = self.pins[index].is_high();
             let was_down = std::mem::replace(&mut self.down[index], down);
 
             if !down || was_down {

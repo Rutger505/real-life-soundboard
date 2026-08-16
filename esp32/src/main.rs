@@ -40,20 +40,23 @@ fn main() -> Result<()> {
 
     let mut led = StatusLed::new(PinDriver::output(pins.gpio2)?)?;
 
-    // All use internal pull-ups, so a press pulls the pin low.
+    // All use internal pull-downs, so a press pulls the pin high. Wire each
+    // button between its GPIO and 3.3V — no external resistors needed.
     //
-    // NB: GPIO5 is avoided — it is a strapping pin and unreliable as an input
-    // on some boards, so button index 1 sits on GPIO23 instead.
+    // Strapping pins are avoided: GPIO5 (index 1 → GPIO23) as before, and with
+    // pull-downs GPIO12/GPIO15 are also unsafe at boot, so those two buttons
+    // sit on GPIO25/GPIO26 instead. Input-only pins (34/35/36/39) are never
+    // used here because they lack internal pull-downs entirely.
     let button_pins: [PinDriver<'_, Input>; buttons::COUNT] = [
-        PinDriver::input(pins.gpio4, Pull::Up)?,
-        PinDriver::input(pins.gpio23, Pull::Up)?,
-        PinDriver::input(pins.gpio12, Pull::Up)?,
-        PinDriver::input(pins.gpio13, Pull::Up)?,
-        PinDriver::input(pins.gpio14, Pull::Up)?,
-        PinDriver::input(pins.gpio15, Pull::Up)?,
-        PinDriver::input(pins.gpio16, Pull::Up)?,
-        PinDriver::input(pins.gpio17, Pull::Up)?,
-        PinDriver::input(pins.gpio18, Pull::Up)?,
+        PinDriver::input(pins.gpio4, Pull::Down)?,
+        PinDriver::input(pins.gpio23, Pull::Down)?,
+        PinDriver::input(pins.gpio25, Pull::Down)?,
+        PinDriver::input(pins.gpio13, Pull::Down)?,
+        PinDriver::input(pins.gpio14, Pull::Down)?,
+        PinDriver::input(pins.gpio26, Pull::Down)?,
+        PinDriver::input(pins.gpio16, Pull::Down)?,
+        PinDriver::input(pins.gpio17, Pull::Down)?,
+        PinDriver::input(pins.gpio18, Pull::Down)?,
     ];
     let mut scanner = ButtonScanner::new(button_pins)?;
 
