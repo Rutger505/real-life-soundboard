@@ -13,7 +13,7 @@ The Android app runs a **foreground service**, so the BLE connection and audio p
 - ESP32 dev board (any variant with 18+ GPIO pins)
 - 9 momentary push buttons
 - 1 LED (status indicator)
-- Resistors: the firmware uses internal pull-ups, so no external resistors needed for buttons. Use a 220–330Ω resistor in series with the LED.
+- Resistors: the firmware uses internal pull-downs, so no external resistors needed for buttons. Use a 220–330Ω resistor in series with the LED.
 
 ### Wiring table
 
@@ -21,15 +21,15 @@ The Android app runs a **foreground service**, so the BLE connection and audio p
 |--------|------|------|------|
 | 1      | 4    | LED+ | 2    |
 | 2      | 23   |      |      |
-| 3      | 12   |      |      |
+| 3      | 25   |      |      |
 | 4      | 13   |      |      |
 | 5      | 14   |      |      |
-| 6      | 15   |      |      |
+| 6      | 26   |      |      |
 | 7      | 16   |      |      |
 | 8      | 17   |      |      |
 | 9      | 18   |      |      |
 
-Connect each button between GPIO pin and GND. The firmware configures internal pull-ups so no external resistors are needed.
+Connect each button between GPIO pin and 3.3V. The firmware configures internal pull-downs (press = high) so no external resistors are needed.
 
 ## BLE UUIDs
 
@@ -38,7 +38,7 @@ Connect each button between GPIO pin and GND. The firmware configures internal p
 | Service        | `12345678-1234-1234-1234-123456789012` |
 | Characteristic | `12345678-1234-1234-1234-123456789abc` |
 
-The characteristic is notify-only. When a button is pressed the ESP32 sends a 1-byte notification with the button index (0–8).
+The characteristic is notify-only. When a button is pressed (pin driven high) the ESP32 sends a 1-byte notification with the button index (0–8).
 
 ## ESP32 firmware
 
