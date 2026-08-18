@@ -1,15 +1,20 @@
+# Bare-metal Xtensa target. No ESP-IDF, no ldproxy: esp-hal ships the linker
+# script (linkall.x) and we pull it in with a plain linker arg below.
 [build]
-target = "xtensa-esp32-espidf"
+target = "xtensa-esp32-none-elf"
 
+[target.xtensa-esp32-none-elf]
+rustflags = [
+  # esp-hal's linker script; wires up the ROM layout, IRAM/DRAM sections, etc.
+  "-C", "link-arg=-Tlinkall.x",
+  # Needed for esp-backtrace to walk the stack on a panic.
+  "-C", "force-frame-pointers",
+]
+
+# The Xtensa target has no prebuilt std/core, so build the sysroot crates we
+# actually use (core + alloc for the BLE host's heap-backed collections).
 [unstable]
-build-std = ["std", "panic_abort"]
-
-[target.xtensa-esp32-espidf]
-linker = "ldproxy"
-rustflags = ["--cfg", "espidf_time64"]
+build-std = ["core", "alloc"]
 
 [env]
-# esp-idf-svc 0.52 targets ESP-IDF 5.4/5.5 (needs newer BLE symbols like
-# esp_ble_gattc_enh_open / esp_ble_conn_params_t that don't exist in 5.2)
-ESP_IDF_VERSION = "v5.4.2"
-MCU = "esp32"
+ESP_LOG = "info"

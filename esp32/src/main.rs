@@ -1,87 +1,95 @@
-//! Real Live Soundboard — ESP32 firmware.
+//! Real Live Soundboard — ESP32 firmware (bare-metal `no_std`).
 //!
 //! 9 push buttons and a status LED on the wrist. A press flashes the LED and
 //! sends the button index (0..=8) as a one-byte BLE GATT notification to the
 //! paired phone, which plays the configured clip.
 //!
-//! The device runs off a small LiPo, so the whole firmware is arranged around
-//! doing nothing cheaply: [`buttons`] blocks on a GPIO interrupt instead of
-//! polling, [`led`] never sleeps in the main loop, [`ble`] keeps the radio off
-//! between connection events, and [`power`] scales the CPU down in between. See
-//! each module for the details.
+//! This is a true bare-metal build: no ESP-IDF, no RTOS-on-top-of-an-RTOS.
+//! It runs directly on `esp-hal` with the Embassy async executor (`esp-rtos`),
+//! the `esp-radio` BLE controller and the `trouble-host` GATT stack.
+//!
+//! The whole firmware is arranged around doing nothing cheaply. Every button is
+//! its own async task blocked on a GPIO edge interrupt ([`buttons`]); when
+//! nobody is touching the board every task is parked and the executor idles the
+//! CPU on a `waiti`. The LED flash is a short non-blocking pulse ([`led`]) and
+//! the radio ([`ble`]) sleeps between connection events. See each module.
+
+#![no_std]
+#![no_main]
 
 mod ble;
 mod buttons;
 mod led;
-mod power;
 
-use std::time::Instant;
+use embassy_executor::Spawner;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 
-use anyhow::Result;
-use log::info;
+use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
+use esp_hal::interrupt::software::SoftwareInterruptControl;
+use esp_hal::timer::timg::TimerGroup;
 
-use esp_idf_hal::gpio::{Input, PinDriver, Pull};
-use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use esp_backtrace as _;
 
-use buttons::ButtonScanner;
-use led::StatusLed;
+// Required by the ESP-IDF second-stage bootloader to recognise the app image.
+esp_bootloader_esp_idf::esp_app_desc!();
 
-fn main() -> Result<()> {
-    esp_idf_svc::sys::link_patches();
-    esp_idf_svc::log::EspLogger::initialize_default();
+/// Number of buttons. Kept below 16 so an index fits comfortably in a byte and
+/// matches the fixed-size embassy task pool below.
+pub const BUTTON_COUNT: usize = 9;
 
-    let peripherals = Peripherals::take()?;
-    let nvs = EspDefaultNvsPartition::take()?;
+/// Newly pressed, debounced button indices, produced by the per-button tasks
+/// and consumed by the BLE notify task. Bounded and lossy on purpose: if no
+/// phone is draining it (disconnected, or mid-reconnect) presses are dropped
+/// rather than blocking a button task — a soundboard press is only interesting
+/// live.
+pub static BUTTON_EVENTS: Channel<CriticalSectionRawMutex, u8, 16> = Channel::new();
 
-    // Distinct fields, so these are partial moves rather than a whole-struct one.
-    let pins = peripherals.pins;
-    let modem = peripherals.modem;
+/// Poked on every accepted press so the LED task can flash without the button
+/// tasks ever touching the GPIO. Coalescing (a second press during a flash just
+/// re-arms it) is fine.
+pub static LED_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-    let mut led = StatusLed::new(PinDriver::output(pins.gpio2)?)?;
+#[esp_rtos::main]
+async fn main(spawner: Spawner) {
+    esp_println::logger::init_logger_from_env();
 
-    // All use internal pull-downs, so a press pulls the pin high. Wire each
-    // button between its GPIO and 3.3V — no external resistors needed.
-    //
-    // Strapping pins are avoided: GPIO5 (index 1 → GPIO23) as before, and with
-    // pull-downs GPIO12/GPIO15 are also unsafe at boot, so those two buttons
-    // sit on GPIO25/GPIO26 instead. Input-only pins (34/35/36/39) are never
-    // used here because they lack internal pull-downs entirely.
-    let button_pins: [PinDriver<'_, Input>; buttons::COUNT] = [
-        PinDriver::input(pins.gpio4, Pull::Down)?,
-        PinDriver::input(pins.gpio23, Pull::Down)?,
-        PinDriver::input(pins.gpio25, Pull::Down)?,
-        PinDriver::input(pins.gpio13, Pull::Down)?,
-        PinDriver::input(pins.gpio14, Pull::Down)?,
-        PinDriver::input(pins.gpio26, Pull::Down)?,
-        PinDriver::input(pins.gpio16, Pull::Down)?,
-        PinDriver::input(pins.gpio17, Pull::Down)?,
-        PinDriver::input(pins.gpio18, Pull::Down)?,
-    ];
-    let mut scanner = ButtonScanner::new(button_pins)?;
+    // 80 MHz is plenty for a GATT server that sends one byte per press, and
+    // active current scales roughly with clock. (Bare-metal has no dynamic
+    // frequency scaling / light sleep the way ESP-IDF did; the executor still
+    // idles the core between events, which is where the real savings are.)
+    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::_80MHz));
 
-    let server = ble::Server::new(modem, nvs)?;
-    power::set_ble_tx_power()?;
+    // The BLE host keeps its ATT tables and packet pool on the heap.
+    esp_alloc::heap_allocator!(size: 72 * 1024);
 
-    // Last, so the stack is fully up before the CPU is allowed to scale down.
-    power::configure()?;
-    info!(
-        "soundboard up (light sleep: {})",
-        if power::LIGHT_SLEEP { "on" } else { "off" }
-    );
+    // Bring up the Embassy executor + scheduler (timer tick + a software
+    // interrupt for context switches). Everything past here is async tasks.
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
 
-    loop {
-        // Blocks indefinitely whenever the LED is off and no button is held,
-        // which is the overwhelming majority of the time.
-        let pressed = scanner.wait(led.deadline())?;
-        let now = Instant::now();
+    // --- Status LED: GPIO2, active-high, starts off. ---
+    let led = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
+    spawner.spawn(led::led_task(led).unwrap());
 
-        for index in buttons::indices(pressed) {
-            info!("button {index} pressed");
-            server.notify_button(index as u8);
-            led.flash(now);
-        }
+    // --- Buttons: internal pull-DOWN, so a press pulls the pin HIGH. Wire each
+    // button between its GPIO and 3.3V — no external resistors needed. Each pin
+    // gets its own task blocked on the rising (press) edge. ---
+    let cfg = InputConfig::default().with_pull(Pull::Down);
+    // index -> GPIO. Order matters; it is the value notified to the phone.
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO4, cfg), 0).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO23, cfg), 1).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO25, cfg), 2).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO13, cfg), 3).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO14, cfg), 4).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO26, cfg), 5).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO16, cfg), 6).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO17, cfg), 7).unwrap());
+    spawner.spawn(buttons::button_task(Input::new(peripherals.GPIO18, cfg), 8).unwrap());
 
-        led.update(now);
-    }
+    // --- BLE: owns the radio for the rest of time. Never returns. ---
+    ble::run(peripherals.BT).await;
 }
