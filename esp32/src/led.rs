@@ -1,10 +1,7 @@
-//! Status LED.
+//! Status LED: one short non-blocking flash per press.
 //!
-//! A press needs visible feedback, but every millisecond the LED is lit is a
-//! millisecond of nothing useful, so this is one short, non-blocking flash.
-//! The task sleeps on [`crate::LED_SIGNAL`] and, when poked, lights the LED for
-//! [`FLASH`] and turns it off again. It never blocks any other task: button
-//! input and BLE run on their own tasks the whole time.
+//! The task sleeps on [`crate::LED_SIGNAL`] and, when poked, lights the LED
+//! for [`FLASH`] then turns it off. It never blocks any other task.
 
 use embassy_time::{Duration, Timer};
 use esp_hal::gpio::Output;
