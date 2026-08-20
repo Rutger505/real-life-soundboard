@@ -1,6 +1,6 @@
 //! Interrupt-driven button input.
 //!
-//! The obvious implementation — read all nine pins every 20 ms — keeps the CPU
+//! The obvious implementation, reading all nine pins every 20 ms, keeps the CPU
 //! out of every idle state permanently. Instead each button is a task blocked
 //! on its pin's rising-edge interrupt: while nobody is touching the board every
 //! task is parked and the executor idles the core. A press wakes exactly one

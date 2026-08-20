@@ -1,4 +1,4 @@
-//! Real Live Soundboard — ESP32 firmware (bare-metal `no_std`).
+//! Real Live Soundboard. ESP32 firmware (bare-metal `no_std`).
 //!
 //! 9 push buttons and a status LED on the wrist. A press flashes the LED and
 //! sends the button index (0..=8) as a one-byte BLE GATT notification to the
@@ -43,7 +43,7 @@ pub const BUTTON_COUNT: usize = 9;
 /// Newly pressed, debounced button indices, produced by the per-button tasks
 /// and consumed by the BLE notify task. Bounded and lossy on purpose: if no
 /// phone is draining it (disconnected, or mid-reconnect) presses are dropped
-/// rather than blocking a button task — a soundboard press is only interesting
+/// rather than blocking a button task. A soundboard press is only interesting
 /// live.
 pub static BUTTON_EVENTS: Channel<CriticalSectionRawMutex, u8, 16> = Channel::new();
 
@@ -76,7 +76,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(led::led_task(led).unwrap());
 
     // --- Buttons: internal pull-DOWN, so a press pulls the pin HIGH. Wire each
-    // button between its GPIO and 3.3V — no external resistors needed. Each pin
+    // button between its GPIO and 3.3V, no external resistors needed. Each pin
     // gets its own task blocked on the rising (press) edge. ---
     let cfg = InputConfig::default().with_pull(Pull::Down);
     // index -> GPIO. Order matters; it is the value notified to the phone.

@@ -1,7 +1,7 @@
 //! Status LED.
 //!
 //! A press needs visible feedback, but every millisecond the LED is lit is a
-//! millisecond of nothing useful — so this is one short, non-blocking flash.
+//! millisecond of nothing useful, so this is one short, non-blocking flash.
 //! The task sleeps on [`crate::LED_SIGNAL`] and, when poked, lights the LED for
 //! [`FLASH`] and turns it off again. It never blocks any other task: button
 //! input and BLE run on their own tasks the whole time.

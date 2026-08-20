@@ -9,7 +9,7 @@
 //! adds the standard CCCD (0x2902) for the `notify` property automatically.
 //!
 //! Radio time dominates power once the CPU stops polling, so the link is tuned
-//! for it: advertising runs at a slow 100–200 ms interval and the controller
+//! for it. Advertising runs at a slow 100-200 ms interval and the controller
 //! stops it automatically on connect; once connected we ask the phone to relax
 //! the link (slow interval + slave latency) so the radio can skip most
 //! connection events while we have nothing to send.
@@ -47,7 +47,7 @@ const HCI_CMD_SLOTS: usize = 20;
 // --- Requested low-power connection parameters -----------------------------
 // A short interval keeps a press on the wire quickly; slave latency lets the
 // radio skip that many events in a row whenever we have nothing to send (the
-// normal case). Skipping is not a delay — a press is still transmitted at the
+// normal case). Skipping is not a delay. A press is still transmitted at the
 // next connection event.
 const CONN_INTERVAL_MIN: Duration = Duration::from_millis(30);
 const CONN_INTERVAL_MAX: Duration = Duration::from_millis(45);
@@ -211,8 +211,8 @@ async fn gatt_events_task<P: PacketPool>(conn: &GattConnection<'_, '_, P>) {
 }
 
 /// Once connected, ask the phone to relax the link to the low-power parameters.
-/// It is a request — the central decides — so we fire it once, shortly after
-/// connect, and then idle for the life of the connection.
+/// It is a request, so the central decides. We fire it once, shortly after
+/// connect, then idle for the life of the connection.
 async fn conn_params_task<C, P: PacketPool>(conn: &GattConnection<'_, '_, P>, stack: &Stack<'_, C, P>)
 where
     C: Controller
