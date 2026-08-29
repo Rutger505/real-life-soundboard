@@ -1,6 +1,6 @@
 // =====================================================================
 //  real-live-soundboard.scad
-//  Flat 9-button soundboard enclosure (wrist-wearable / shirt pocket).
+//  Flat 9-button soundboard enclosure (shirt pocket).
 //  Units: mm.  Origin: outside bottom-front-left corner of the tray.
 //
 //  LAYOUT (looking down, +Y away from the wearer)
@@ -14,7 +14,7 @@
 //  the ESP32 is what sets the depth: 5.5 (board) + 0.6 clearance + 3.0
 //  (leg space) + 3.5 (button body) = 12.6, so the cavity is 12.6 and the
 //  battery gets 4.1 mm of slack (pad it).  Body = 15.4 mm thick,
-//  61.2 x 97.3 mm (113.3 mm over the strap lugs).
+//  61.2 x 97.3 mm.
 //
 //  THREE PRINTED PARTS
 //    tray   holds every module in corner retainers; four corner screw
@@ -105,14 +105,6 @@ scr_head  = 4.4;
 boss_dia  = 2*(corner_r - wall + 0.4);
 boss_deep = 8;
 
-/* [Strap] ----------------------------------------------------------- */
-strap_tabs = true;
-strap_ext  = 8;     // how far a lug sticks past the body
-strap_t    = 4;     // lug thickness
-strap_lug  = 18;    // width of one lug
-strap_dx   = 16;    // lug centre, offset from the case centreline
-strap_slot = [12, 2.5];   // strap slot through a lug
-
 // ---------------------------------------------------------------- derived
 btn_act = btn_h - btn.z;              // 1.5 actuator above the body
 sw_out  = sw_lever_h - swb.z;         // 4.5 lever above the body face
@@ -156,8 +148,7 @@ plate_y0 = pil_y[0]  - plate_ov;         plate_y1 = pil_y[1]  + plate_ov;
 boss_xy = [[corner_r, corner_r], [out_w-corner_r, corner_r],
            [corner_r, out_l-corner_r], [out_w-corner_r, out_l-corner_r]];
 
-echo(str("body  ", out_w, " x ", out_l, " x ", out_h, " mm",
-         strap_tabs ? str("  (", out_l + 2*strap_ext, " mm over the strap tabs)") : ""));
+echo(str("body  ", out_w, " x ", out_l, " x ", out_h, " mm"));
 echo(str("battery slack ", cav_h - bat.z, " mm   button-leg space ", btn_leg, " mm"));
 
 // ================================================================ helpers
@@ -184,21 +175,6 @@ module retainer(x, y, sx, sy, h) {
 }
 
 // =================================================================== tray
-// Two lugs per end.  The gap between them is what lets a USB-C plug reach
-// the charger on the front end.
-module strap_tab()
-    for (sx = [-1, 1]) {
-        cx = out_w/2 + sx*strap_dx;
-        hull() for (x = [cx - strap_lug/2 + 3, cx + strap_lug/2 - 3],
-                    y = [-strap_ext + 3, 4])
-            translate([x, y, 0]) cylinder(r = 3, h = strap_t);
-    }
-
-module strap_slot_cut()
-    for (sx = [-1, 1])
-        translate([out_w/2 + sx*strap_dx - strap_slot.x/2, -strap_ext + 2, -1])
-            cube([strap_slot.x, strap_slot.y, strap_t + 2]);
-
 module usbc_cut() {
     z = floor_t + 0.4;
     // opening the plug shell passes through
@@ -233,20 +209,10 @@ module boss(p)
 
 module tray() {
     difference() {
-        union() {
-            rrect(out_w, out_l, corner_r, tray_h);
-            if (strap_tabs) {
-                strap_tab();
-                translate([out_w, out_l, 0]) rotate([0, 0, 180]) strap_tab();
-            }
-        }
+        rrect(out_w, out_l, corner_r, tray_h);
         cavity(1);
         usbc_cut();
         switch_cut();
-        if (strap_tabs) {
-            strap_slot_cut();
-            translate([out_w, out_l, 0]) rotate([0, 0, 180]) strap_slot_cut();
-        }
     }
 
     // interior features, added after the cavity is cut

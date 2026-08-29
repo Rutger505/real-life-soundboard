@@ -34,8 +34,8 @@ Connect each button between GPIO pin and 3.3V. The firmware configures internal 
 ## Enclosure (3D print)
 
 `case/real-live-soundboard.scad` is the OpenSCAD source for a flat three-part
-enclosure, sized to wear on a wrist strap or carry in a shirt pocket. The body is
-61.2 x 97.3 x 15.4 mm, or 113.3 mm long over the strap lugs.
+enclosure, sized to carry in a shirt pocket. The body is 61.2 x 97.3 x 15.4 mm,
+with nothing protruding from it.
 
 Everything is driven by the measured component sizes at the top of the file, so
 if your battery or dev board differs, edit those and the layout follows.
