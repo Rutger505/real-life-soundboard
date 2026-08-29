@@ -31,6 +31,86 @@ The Android app runs a **foreground service**, so the BLE connection and audio p
 
 Connect each button between GPIO pin and 3.3V. The firmware configures internal pull-downs (press = high) so no external resistors are needed.
 
+## Enclosure (3D print)
+
+`case/real-live-soundboard.scad` is the OpenSCAD source for a flat three-part
+enclosure, sized to carry in a shirt pocket. The body is 61.2 x 97.3 x 15.4 mm,
+with nothing protruding from it.
+
+Everything is driven by the measured component sizes at the top of the file, so
+if your battery or dev board differs, edit those and the layout follows.
+
+| Part  | `part=`   | Print height | Holds                                                                         |
+|-------|-----------|--------------|-------------------------------------------------------------------------------|
+| tray  | `"tray"`  | 13.8 mm      | battery, ESP32, charger, buck-boost and switch in corner retainers; four M2 bosses; four pillars |
+| lid   | `"lid"`   | 5.1 mm       | nine button pockets underneath, finger dishes on top                          |
+| plate | `"plate"` | 1.2 mm       | button carrier: takes the press force down into the tray pillars              |
+
+Inside, three bands run front to back: charger (USB-C exits the front wall) with
+the buck-boost and power switch, then the ESP32, then the LiPo. The 3x3 button
+grid is centred on the case, directly above the ESP32. The status LED sits in
+its own socket in the front right corner, directly above the power switch.
+
+### Export
+
+```bash
+# all three parts laid out on one bed
+openscad -o soundboard.stl -D 'part="print"' case/real-live-soundboard.scad
+
+# or one at a time
+openscad -o lid.stl -D 'part="lid"' case/real-live-soundboard.scad
+```
+
+`part="assembly"` renders everything in place with the components ghosted in,
+which is the view to use when checking clearances.
+
+### Printing
+
+No supports. Every part comes out of the script already lying flat in its print
+orientation, including the lid, which is exported upside down with the pockets
+facing up. PLA or PETG, 0.2 mm layers, three or four perimeters. The four pillars
+are 3 mm across and 7.9 mm tall, so leave part cooling on.
+
+Fasteners: 4x M2x8 self-tapping, into the corner bosses.
+
+### Assembly
+
+1. A 6x6 tactile switch has four legs, but the pair on each side is internally
+   shorted, so cut one leg from each side away. Trim the two that are left to
+   about 2.5 mm and tin the tips. Check with a multimeter which pins pair up;
+   not every part is wired the same.
+2. Push the nine switches up into the lid pockets, and the 3 mm status LED
+   into its socket in the front right corner. Fit its series resistor (220-330 ohm) on the
+   leg, inside the case.
+3. Drop the plate over them. The legs come through the slots, and two holes
+   locate on the pegs on top of the tray pillars.
+4. Solder now, not earlier. With the plate on, the lid assembly lies face down
+   in front of you and the leg tips stand 1.3 mm proud of the plate, in the
+   open. Lay a rigid 0.6 mm tinned copper wire flat against the underside of
+   the plate as the common 3.3 V rail and solder all nine to it, then one
+   30 AWG signal wire per button. That is 12 wires out of the lid once the LED
+   is counted.
+5. Fit the modules in the tray, route the loom down one of the ~10 mm free
+   strips beside the plate rather than over the board, close the lid and drive
+   the four screws.
+
+### Clearances worth knowing
+
+- **Button height has zero slack.** Each switch is clamped between the pocket
+  ceiling and the plate with 0.00 mm to spare, so print tolerance on the 7.9 mm
+  pillars decides whether a button binds or rattles. Drop `pil_top` by 0.1 mm if
+  yours bind.
+- **The rail is live.** It runs bare, 1.3 mm above the ESP32. Put a strip of
+  Kapton on the board underneath it.
+- **The battery has 4.1 mm of slack** in a cavity sized by the button stack. Pad
+  it with foam or a printed spacer or the cell will slide around.
+- **Button legs must be 3 mm or shorter** (`btn_leg`), or they bottom out.
+- **The LED is fully captured.** Its light hole is 2.2 mm, narrower than the
+  3 mm body, so the LED cannot fall out through the top. Push it in from
+  underneath before the tray goes on, and check it points the right way first —
+  once it is in, the only way back out is from below.
+
+
 ## BLE UUIDs
 
 | Role           | UUID                                   |
@@ -82,4 +162,5 @@ cd android
 ```
 esp32/          Rust firmware (std, esp-idf-hal, esp-idf-svc)
 android/        Android app (Kotlin, Jetpack Compose)
+case/           OpenSCAD source for the printed enclosure
 ```
