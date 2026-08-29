@@ -88,10 +88,10 @@ dish_h    = 1.0;
 act_d     = 4.0;    // actuator clearance hole
 
 /* [Status LED] ------------------------------------------------------ */
-// 3 mm LED, GPIO2.  It lives in the gap between the charger and the power
-// switch, the only patch of band 1 that no module and no carrier plate
-// reaches, so the socket has the full cavity height to itself.
-led_pos  = [44, 14];    // inner-cavity coordinates
+// 3 mm LED, GPIO2.  Front right, over the power switch: the switch is only
+// 4 mm tall so the socket clears it easily, and this is as close to the
+// corner as the screw boss allows.
+led_pos  = [52.5, 10];  // inner-cavity coordinates
 led_d    = 3.0;         // measured body
 led_rim  = 3.3;         // measured lip at the base of the lens, widest part
 led_rim_h = 1.2;        // relief that lip drops into

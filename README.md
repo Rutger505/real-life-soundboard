@@ -49,8 +49,7 @@ if your battery or dev board differs, edit those and the layout follows.
 Inside, three bands run front to back: charger (USB-C exits the front wall) with
 the buck-boost and power switch, then the ESP32, then the LiPo. The 3x3 button
 grid is centred on the case, directly above the ESP32. The status LED sits in
-its own socket in the front band, in the gap between the charger and the power
-switch.
+its own socket in the front right corner, directly above the power switch.
 
 ### Export
 
@@ -81,7 +80,7 @@ Fasteners: 4x M2x8 self-tapping, into the corner bosses.
    about 2.5 mm and tin the tips. Check with a multimeter which pins pair up;
    not every part is wired the same.
 2. Push the nine switches up into the lid pockets, and the 3 mm status LED
-   into its socket beside them. Fit its series resistor (220-330 ohm) on the
+   into its socket in the front right corner. Fit its series resistor (220-330 ohm) on the
    leg, inside the case.
 3. Drop the plate over them. The legs come through the slots, and two holes
    locate on the pegs on top of the tray pillars.
