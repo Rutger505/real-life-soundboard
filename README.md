@@ -48,7 +48,9 @@ if your battery or dev board differs, edit those and the layout follows.
 
 Inside, three bands run front to back: charger (USB-C exits the front wall) with
 the buck-boost and power switch, then the ESP32, then the LiPo. The 3x3 button
-grid is centred on the case, directly above the ESP32.
+grid is centred on the case, directly above the ESP32. The status LED sits in
+its own socket in the front band, in the gap between the charger and the power
+switch.
 
 ### Export
 
@@ -78,7 +80,9 @@ Fasteners: 4x M2x8 self-tapping, into the corner bosses.
    shorted, so cut one leg from each side away. Trim the two that are left to
    about 2.5 mm and tin the tips. Check with a multimeter which pins pair up;
    not every part is wired the same.
-2. Push the nine switches up into the lid pockets.
+2. Push the nine switches up into the lid pockets, and the 3 mm status LED
+   into its socket beside them. Fit its series resistor (220-330 ohm) on the
+   leg, inside the case.
 3. Drop the plate over them. The legs come through the slots, and two holes
    locate on the pegs on top of the tray pillars.
 4. Solder now, not earlier. With the plate on, the lid assembly lies face down
@@ -102,8 +106,10 @@ Fasteners: 4x M2x8 self-tapping, into the corner bosses.
 - **The battery has 4.1 mm of slack** in a cavity sized by the button stack. Pad
   it with foam or a printed spacer or the cell will slide around.
 - **Button legs must be 3 mm or shorter** (`btn_leg`), or they bottom out.
-- **No LED window yet.** The firmware drives a status LED on GPIO2, but the lid
-  has no hole for it.
+- **The LED is fully captured.** Its light hole is 2.2 mm, narrower than the
+  3 mm body, so the LED cannot fall out through the top. Push it in from
+  underneath before the tray goes on, and check it points the right way first —
+  once it is in, the only way back out is from below.
 
 
 ## BLE UUIDs

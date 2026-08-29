@@ -21,7 +21,8 @@
 //           bosses (M2 self-tapping); four pillars that carry the plate
 //    lid    button pockets hang from its underside; the actuators sit
 //           0.1 mm BELOW the outer surface in a finger dish, so nothing
-//           gets pressed while the thing is in a pocket
+//           gets pressed while the thing is in a pocket.  The status LED
+//           hangs from the same face, in its own socket.
 //    plate  button carrier: goes under the nine buttons and takes the
 //           press force down into the tray pillars.  Its four pillars
 //           drop into the band gaps in front of and behind the ESP32,
@@ -29,7 +30,8 @@
 //
 //  ASSEMBLY
 //    1. trim/bend the button legs to <= 3 mm, solder wires on
-//    2. push the nine buttons up into the lid pockets
+//    2. push the nine buttons up into the lid pockets, and the LED into
+//       its socket
 //    3. drop the plate over them (slots take legs + wires, two holes
 //       locate on the pillar pegs)
 //    4. fit the modules in the tray, close the lid, 4x M2x8
@@ -84,6 +86,17 @@ pil_d     = 3.0;    // pillars that hold the carrier plate up
 dish_d    = 9;      // finger dish in the lid
 dish_h    = 1.0;
 act_d     = 4.0;    // actuator clearance hole
+
+/* [Status LED] ------------------------------------------------------ */
+// 3 mm LED, GPIO2.  It lives in the gap between the charger and the power
+// switch, the only patch of band 1 that no module and no carrier plate
+// reaches, so the socket has the full cavity height to itself.
+led_pos  = [44, 14];    // inner-cavity coordinates
+led_d    = 3.0;
+led_clr  = 0.2;
+led_sock = 4.0;         // how far the socket hangs below the lid
+led_lens = 2.2;         // light hole through the outer surface
+led_ch   = 0.6;         // chamfer around that hole
 
 /* [Fasteners] ------------------------------------------------------- */
 scr_pilot = 1.7;    // M2 self-tapping pilot
@@ -270,6 +283,17 @@ module btn_pocket() {
     }
 }
 
+// Status LED socket, hanging from the lid underside like a button pocket.
+// The LED is pushed up until its dome meets the lid and lights through a
+// hole too small for it to escape through.
+module led_socket() {
+    io = led_d + 2*led_clr;
+    difference() {
+        translate([0, 0, -led_sock]) cylinder(d = io + 2*rib, h = led_sock + weld);
+        translate([0, 0, -led_sock - 1]) cylinder(d = io, h = led_sock + 1);
+    }
+}
+
 // Carrier plate: sits under the nine buttons, takes the press force and
 // passes it into the four pillars in the tray floor.  Slots let the
 // (trimmed) legs and their wires through.
@@ -311,6 +335,7 @@ module lid() {
             lid_lip();
             for (i = [-1:1], j = [-1:1])
                 at(btn_c.x + i*btn_pitch, btn_c.y + j*btn_pitch, cav_h) btn_pocket();
+            at(led_pos.x, led_pos.y, cav_h) led_socket();
         }
         for (i = [-1:1], j = [-1:1])
             at(btn_c.x + i*btn_pitch, btn_c.y + j*btn_pitch, cav_h) {
@@ -318,6 +343,11 @@ module lid() {
                 translate([0, 0, top_t - dish_h])
                     cylinder(d1 = act_d + 1.5, d2 = dish_d, h = dish_h + 0.01);
             }
+        at(led_pos.x, led_pos.y, cav_h) {
+            translate([0, 0, -1]) cylinder(d = led_lens, h = top_t + 2);
+            translate([0, 0, top_t - led_ch])
+                cylinder(d1 = led_lens, d2 = led_lens + 2*led_ch, h = led_ch + 0.01);
+        }
         for (p = boss_xy) translate([p.x, p.y, tray_h - 1]) {
             cylinder(d = scr_clear, h = top_t + 2);
             translate([0, 0, top_t + 1 - 1.1]) cylinder(d1 = scr_clear, d2 = scr_head, h = 1.1);
@@ -334,6 +364,10 @@ module mock() {
     %at(sw_pos.x,   sw_pos.y)   union() {
         cube(sw_p);
         translate([sw_p.x, sw_p.y/2 - 1, sw_p.z/2 - 1.2]) cube([sw_out, 2, 2.4]);
+    }
+    %at(led_pos.x, led_pos.y, cav_h - led_sock) union() {
+        cylinder(d = led_d, h = led_sock - led_d/2);
+        translate([0, 0, led_sock - led_d/2]) sphere(d = led_d);
     }
     for (i = [-1:1], j = [-1:1])
         %at(btn_c.x + i*btn_pitch - btn.x/2, btn_c.y + j*btn_pitch - btn.y/2,
