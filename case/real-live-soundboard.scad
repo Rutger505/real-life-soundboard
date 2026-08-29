@@ -92,7 +92,9 @@ act_d     = 4.0;    // actuator clearance hole
 // switch, the only patch of band 1 that no module and no carrier plate
 // reaches, so the socket has the full cavity height to itself.
 led_pos  = [44, 14];    // inner-cavity coordinates
-led_d    = 3.0;
+led_d    = 3.0;         // measured body
+led_rim  = 3.3;         // measured lip at the base of the lens, widest part
+led_rim_h = 1.2;        // relief that lip drops into
 led_clr  = 0.2;
 led_sock = 4.0;         // how far the socket hangs below the lid
 led_lens = 2.2;         // light hole through the outer surface
@@ -254,9 +256,12 @@ module btn_pocket() {
 // hole too small for it to escape through.
 module led_socket() {
     io = led_d + 2*led_clr;
+    ir = led_rim + 2*led_clr;
     difference() {
-        translate([0, 0, -led_sock]) cylinder(d = io + 2*rib, h = led_sock + weld);
+        translate([0, 0, -led_sock]) cylinder(d = ir + 2*rib, h = led_sock + weld);
+        // the bore grips the body; only the top opens up for the lip
         translate([0, 0, -led_sock - 1]) cylinder(d = io, h = led_sock + 1);
+        translate([0, 0, -led_rim_h]) cylinder(d = ir, h = led_rim_h + weld + 1);
     }
 }
 
@@ -333,6 +338,7 @@ module mock() {
     }
     %at(led_pos.x, led_pos.y, cav_h - led_sock) union() {
         cylinder(d = led_d, h = led_sock - led_d/2);
+        translate([0, 0, led_sock - led_rim_h]) cylinder(d = led_rim, h = led_rim_h);
         translate([0, 0, led_sock - led_d/2]) sphere(d = led_d);
     }
     for (i = [-1:1], j = [-1:1])
