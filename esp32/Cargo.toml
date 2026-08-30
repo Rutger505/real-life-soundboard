@@ -9,18 +9,49 @@ name = "soundboard-esp32"
 harness = false
 
 [dependencies]
-# 0.52 fixes the `c_char` vs `i8` mismatch on newer Xtensa rustc toolchains (#570)
-esp-idf-svc = { version = "0.52", features = ["experimental"] }
-esp-idf-hal = "0.46"
-embedded-hal = "1"
-enumset = "1"
-log = "0.4"
-anyhow = "1"
+# --- Bare-metal ESP32 (Xtensa) HAL + async runtime ---
+esp-hal = { version = "1.1.0", features = ["esp32", "unstable"] }
+esp-rtos = { version = "0.3.0", features = ["esp32", "embassy", "esp-alloc", "esp-radio"] }
+esp-alloc = "0.10.0"
+esp-backtrace = { version = "0.19.0", features = ["esp32", "panic-handler", "println"] }
+esp-println = { version = "0.17.0", features = ["esp32", "log-04"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32"] }
 
-[build-dependencies]
-embuild = "0.33"
+# --- BLE: controller (esp-radio) + host stack (trouble) ---
+esp-radio = { version = "0.18.0", features = ["esp32", "ble", "log-04", "unstable"] }
+trouble-host = { version = "0.7.0", features = ["default-packet-pool-mtu-255"] }
+bt-hci = "0.9"
+
+# --- Embassy async plumbing (versions pinned to match esp-rtos 0.3) ---
+embassy-executor = "0.10.0"
+embassy-time = "0.5.1"
+embassy-futures = "0.1.2"
+embassy-sync = "0.8"
+static_cell = "2.1"
+
+log = "0.4"
 
 [profile.release]
 opt-level = "s"
 lto = "fat"
 codegen-units = 1
+debug = 2
+overflow-checks = false
+
+# The released esp-* / esp-radio / esp-rtos and trouble-host 0.7 do not form a
+# coherent set on crates.io: esp-radio 0.18's BLE controller speaks bt-hci 0.8,
+# while trouble-host 0.7 needs bt-hci 0.9. The upstream trouble ESP32 example
+# resolves this by pinning the esp-hal workspace + embassy-executor to the exact
+# git revisions below (bt-hci 0.9 across the board, embassy aligned). We mirror
+# that pinning so the whole tree is the combination Espressif/trouble tested
+# together. Revs are the ones referenced by trouble's examples/esp32 at the
+# trouble-host-v0.7.0 tag.
+[patch.crates-io]
+esp-alloc              = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
+esp-backtrace          = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
+esp-bootloader-esp-idf = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
+esp-hal                = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
+esp-println            = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
+esp-radio              = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
+esp-rtos               = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
+embassy-executor       = { git = "https://github.com/embassy-rs/embassy.git", rev = "1d3c3de" }
