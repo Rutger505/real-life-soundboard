@@ -51,6 +51,11 @@ part = "assembly";      // "assembly" | "tray" | "lid" | "plate" | "print"
 bat   = [43,  25,   8.5];   // LiPo cell
 esp   = [52,  28.5, 5.5];   // ESP32 board
 chg   = [28,  18,   4];     // charger, USB-C centred on an 18 mm edge
+// The TP4056 is a linear charger, so it burns (Vin - Vbat) x Icharge as heat.
+// Standing it off the floor keeps that off the plastic: the case as a whole
+// barely warms, but the patch of floor under the chip would otherwise conduct.
+chg_lift = 1.5;             // air gap under the charger
+chg_foot = 3.0;             // one standoff
 buck  = [13,  17,   4];     // buck-boost converter
 swb   = [8.5, 4,    3.5];   // switch body
 sw_lever_h = 8;             // base -> tip of the slider
@@ -177,8 +182,15 @@ module retainer(x, y, sx, sy, h) {
 }
 
 // =================================================================== tray
+// Four pads under the charger corners, inset far enough to miss the corner
+// retainers and the USB-C shell.
+module charger_feet()
+    for (dx = [3, chg_p.x - 3], dy = [3, chg_p.y - 3])
+        at(chg_pos.x + dx, chg_pos.y + dy, -weld)
+            cylinder(d = chg_foot, h = chg_lift + weld);
+
 module usbc_cut() {
-    z = floor_t + 0.4;
+    z = floor_t + chg_lift + 0.4;
     // opening the plug shell passes through
     translate([out_w/2 - 5.25, -1, z]) cube([10.5, wall + 2, 4.2]);
     // shallow relief so a chunky overmould can seat
@@ -223,7 +235,8 @@ module tray() {
             for (p = boss_xy) boss(p);
             retainer(bat_pos.x,  bat_pos.y,  bat.x,    bat.y,    bat.z);
             retainer(esp_pos.x,  esp_pos.y,  esp.x,    esp.y,    esp.z);
-            retainer(chg_pos.x,  chg_pos.y,  chg_p.x,  chg_p.y,  chg_p.z);
+            retainer(chg_pos.x,  chg_pos.y,  chg_p.x,  chg_p.y,  chg_lift + chg_p.z);
+            charger_feet();
             retainer(buck_pos.x, buck_pos.y, buck.x,   buck.y,   buck.z);
             switch_cradle();
             for (i = [0:3]) at(pil_xy[i].x, pil_xy[i].y, -weld) {
@@ -330,7 +343,7 @@ module lid() {
 module mock() {
     %at(bat_pos.x,  bat_pos.y)  cube(bat);
     %at(esp_pos.x,  esp_pos.y)  cube(esp);
-    %at(chg_pos.x,  chg_pos.y)  cube(chg_p);
+    %at(chg_pos.x,  chg_pos.y, chg_lift) cube(chg_p);
     %at(buck_pos.x, buck_pos.y) cube(buck);
     %at(sw_pos.x,   sw_pos.y)   union() {
         cube(sw_p);

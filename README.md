@@ -102,6 +102,14 @@ Fasteners: 4x M2x8 self-tapping, into the corner bosses.
   yours bind.
 - **The rail is live.** It runs bare, 1.3 mm above the ESP32. Put a strip of
   Kapton on the board underneath it.
+- **The charger stands 1.5 mm off the floor**, on four pads. The TP4056 is a
+  linear charger and burns the difference between 5 V and the cell voltage as
+  heat, so at 1 A it puts close to 2 W into a 28 x 18 mm board. Spread over the
+  whole case that is only about 11 degrees, but the square centimetre of floor
+  directly under the chip would carry it by conduction, and PLA gives up around
+  55 C. The air gap takes that path away. Dropping the charge current does more
+  than the gap does: swap the module's PROG resistor for 3k (400 mA) or 5k
+  (240 mA) and the heat roughly halves again.
 - **The battery has 4.1 mm of slack** in a cavity sized by the button stack. Pad
   it with foam or a printed spacer or the cell will slide around.
 - **Button legs must be 3 mm or shorter** (`btn_leg`), or they bottom out.
