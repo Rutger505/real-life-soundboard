@@ -103,8 +103,9 @@ act_d     = 4.0;    // actuator clearance hole
 /* [Status LED] ------------------------------------------------------ */
 // 3 mm LED, GPIO2.  Front right, over the power switch: the switch is only
 // 4 mm tall so the socket clears it easily, and this is as close to the
-// corner as the screw boss allows.
-led_pos  = [52.5, 10];  // inner-cavity coordinates
+// corner as the screw boss allows.  Kept relative to the right-hand wall,
+// so it follows the cavity instead of sitting at a fixed number.
+led_inset = 5.5;        // socket centre, measured in from the right wall
 led_d    = 3.0;         // measured body
 led_rim  = 3.3;         // measured lip at the base of the lens, widest part
 led_rim_h = 1.2;        // relief that lip drops into
@@ -150,14 +151,15 @@ sw_pos   = [inner_w + wall - 0.4 - sw_out - sw_p.x, 9];
 esp_pos  = [(inner_w - esp.x)/2, b2_y + fit];
 bat_pos  = [(inner_w - bat.x)/2, b3_y + fit];
 btn_c    = [inner_w/2, inner_l/2];
+led_pos  = [inner_w - led_inset, 10];
 
 // button pocket / carrier plate geometry
 pkt_ow  = btn.x + 2*btn_clr + 2*rib;
 // the two band dividers are the shelf the plate rests on
 sep_y   = [b1_d, b2_y + b2_d];              // front face of each divider
 pil_top = cav_h - btn.z - plate_t;          // shelf height = under the plate
-peg_xy  = [[btn_c.x - 16, sep_y[0] + sep_t/2],
-           [btn_c.x + 16, sep_y[1] + sep_t/2]];
+peg_xy  = [for (sx = [-1, 1], i = [0, 1])
+              [btn_c.x + sx*16, sep_y[i] + sep_t/2]];
 plate_x0 = 0.3;                 plate_x1 = inner_w - 0.3;
 plate_y0 = sep_y[0];            plate_y1 = sep_y[1] + sep_t;
 
@@ -170,6 +172,12 @@ echo(str("battery slack ", cav_h - bat.z, " mm   button-leg space ", btn_leg, " 
 // the grid has to land on the two dividers, or the plate is a diving board
 assert(btn_c.y - btn_pitch - pkt_ow/2 >= sep_y[0] - 1);
 assert(btn_c.y + btn_pitch + pkt_ow/2 <= sep_y[1] + sep_t + 1);
+// the LED socket has to stay inside the cavity and off the switch cradle
+led_or = led_rim + 2*led_clr + 2*rib;
+assert(led_pos.x + led_or/2 <= inner_w);
+assert(led_pos.y + led_or/2 <= sep_y[0]);
+// it hangs over the switch, so it only has to clear the cradle in Z
+assert(cav_h - led_sock >= sw_p.z + weld);
 
 // ================================================================ helpers
 module rrect(sx, sy, r, h)
@@ -235,22 +243,23 @@ module boss(p, d)
     }
 
 // Full-width divider between two bands.  It retains the module in front of
-// it and the one behind it, and its top face carries the carrier plate.
-module divider(y, peg)
-    difference() {
-        union() {
-            at(-weld, y, -weld) cube([inner_w + 2*weld, sep_t, pil_top + weld]);
-            at(peg.x, peg.y, pil_top) cylinder(d = 2.0, h = 1.0);
-        }
-        cavity(1, weld);            // trimmed back by the rounded cavity
+// it and the one behind it, and its top face is the shelf that carries the
+// button plate - that is what the four separate plate pillars used to do.
+module divider(y) {
+    intersection() {
+        at(-weld, y, -weld) cube([inner_w + 2*weld, sep_t, pil_top + weld]);
+        cavity(0, weld);            // trimmed back by the rounded cavity
     }
+    for (p = peg_xy) if (p.y > y && p.y < y + sep_t)
+        at(p.x, p.y, pil_top) cylinder(d = 2.0, h = 1.0);
+}
 
-// The battery runs from the rear divider to the back wall, so only its
-// sides need holding.
-module battery_ribs()
+// Side ribs for a module that is already boxed in front and behind (the
+// battery by divider + back wall, the charger by front wall + divider).
+module side_ribs(pos, sx, sy, h)
     for (s = [-1, 1])
-        at(bat_pos.x + (s < 0 ? -fit - rib : bat.x + fit), bat_pos.y, -weld)
-            cube([rib, bat.y, bat.z + weld]);
+        at(pos.x + (s < 0 ? -fit - rib : sx + fit), pos.y, -weld)
+            cube([rib, sy, h + weld]);
 
 module tray() {
     difference() {
@@ -264,8 +273,9 @@ module tray() {
     difference() {
         union() {
             for (i = [0:3]) boss(boss_xy[i], boss_d[i]);
-            for (i = [0, 1]) divider(sep_y[i], peg_xy[i]);
-            battery_ribs();
+            for (y = sep_y) divider(y);
+            side_ribs(bat_pos, bat.x, bat.y, bat.z);
+            side_ribs(chg_pos, chg_p.x, chg_p.y, chg_lift + chg_p.z);
             charger_feet();
             retainer(buck_pos.x, buck_pos.y, buck.x,   buck.y,   buck.z);
             switch_cradle();
