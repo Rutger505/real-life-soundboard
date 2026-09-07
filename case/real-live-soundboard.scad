@@ -55,7 +55,8 @@
 $fa = 2; $fs = 0.4;
 
 /* [Output] --------------------------------------------------------- */
-part = "assembly";      // "assembly" | "tray" | "lid" | "plate" | "print"
+// "open" is the assembly with the lid left off, to look into the tray
+part = "assembly";      // "assembly" | "open" | "tray" | "lid" | "plate" | "print"
 
 /* [Measured components] -------------------------------------------- */
 bat   = [43,  25,   8.5];   // LiPo cell
@@ -413,6 +414,7 @@ module mock() {
 
 // ================================================================= render
 if (part == "assembly") { tray(); lid(); plate(); mock(); }
+else if (part == "open") { tray(); plate(); mock(); }
 else if (part == "tray")  tray();
 else if (part == "plate") translate([-wall - plate_x0, -wall - plate_y0,
                                      -floor_t - pil_top]) plate();
