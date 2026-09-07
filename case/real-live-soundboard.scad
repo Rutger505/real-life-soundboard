@@ -146,7 +146,9 @@ out_h  = tray_h + top_t;
 
 // component positions, in inner-cavity coordinates
 chg_pos  = [(inner_w - chg_p.x)/2, 0];            // hard against the front wall
-buck_pos = [3, 9];
+// hard against the left wall and the front divider, so it needs ribs on two
+// sides only and stays clear of the charger's left rib
+buck_pos = [fit, b1_d - buck.y - fit];
 sw_pos   = [inner_w + wall - 0.4 - sw_out - sw_p.x, 9];
 esp_pos  = [(inner_w - esp.x)/2, b2_y + fit];
 bat_pos  = [(inner_w - bat.x)/2, b3_y + fit];
@@ -175,6 +177,8 @@ assert(btn_c.y + btn_pitch + pkt_ow/2 <= sep_y[1] + sep_t + 1);
 // the LED socket has to stay inside the cavity and off the switch cradle
 led_or = led_rim + 2*led_clr + 2*rib;
 assert(led_pos.x + led_or/2 <= inner_w);
+// the buck-boost and its rib have to stay out of the charger's left rib
+assert(buck_pos.x + buck.x + fit + rib <= chg_pos.x - fit - rib);
 assert(led_pos.y + led_or/2 <= sep_y[0]);
 // it hangs over the switch, so it only has to clear the cradle in Z
 assert(cav_h - led_sock >= sw_p.z + weld);
@@ -224,6 +228,15 @@ module switch_cut() {
     translate([out_w - wall - 1, y - 2.75, z - 1.5]) cube([wall + 2, 5.5, 3]);
     // finger relief around the slider
     translate([out_w - 0.8, y - 4.5, z - 3]) cube([2, 9, 6]);
+}
+
+// Two-sided cradle for the buck-boost: the left wall and the front divider
+// hold the other two sides.
+module buck_cradle() {
+    ox = buck_pos.x - fit; oy = buck_pos.y - fit;
+    w = buck.x + 2*fit;  d = buck.y + 2*fit;  h = buck.z + weld;
+    at(ox + w, oy - rib, -weld) cube([rib, d + rib, h]);
+    at(ox,     oy - rib, -weld) cube([w + rib, rib, h]);
 }
 
 // The switch gets a three-sided cradle: its +X side stays open so the slider
@@ -277,7 +290,7 @@ module tray() {
             side_ribs(bat_pos, bat.x, bat.y, bat.z);
             side_ribs(chg_pos, chg_p.x, chg_p.y, chg_lift + chg_p.z);
             charger_feet();
-            retainer(buck_pos.x, buck_pos.y, buck.x,   buck.y,   buck.z);
+            buck_cradle();
             switch_cradle();
         }
         for (p = boss_xy)
