@@ -14,7 +14,17 @@
 //  the ESP32 is what sets the depth: 5.5 (board) + 0.6 clearance + 3.0
 //  (leg space) + 3.5 (button body) = 12.6, so the cavity is 12.6 and the
 //  battery gets 4.1 mm of slack (pad it).  Body = 15.4 mm thick,
-//  61.2 x 97.3 mm.
+//  56.0 x 92.6 mm.
+//
+//  COMPACTING (nothing is duplicated)
+//    - the outer side walls ARE the width retainer: the cavity is the
+//      ESP32 plus fit, so no separate side ribs and no side margin
+//    - the bands are separated by two full-width dividers instead of a
+//      gap plus two sets of corner arms; each divider retains the module
+//      in front of it and the module behind it
+//    - those dividers also carry the button carrier plate, so the four
+//      plate pillars (and the gaps they needed) are gone
+//    - the battery sits against the back wall, so it needs side ribs only
 //
 //  THREE PRINTED PARTS
 //    tray   holds every module in corner retainers; four corner screw
@@ -70,9 +80,8 @@ corner_r  = 4.5;
 fit       = 0.4;    // clearance around every component
 rib       = 1.2;    // retainer / pocket wall thickness
 brk_len   = 5;      // length of a corner retainer arm
-side_marg = 3;      // free space each side of the widest board
-band_gap  = 4;      // gap between the three bands
-end_marg  = 3;
+sep_t     = 2.4;    // band divider: retainer both sides + plate shelf
+end_marg  = 1.5;    // keeps the battery off the rear screw bosses
 clr_mod   = 0.6;    // vertical clearance over the 4 mm modules
 weld      = 0.5;    // overlap used where a feature meets a wall/floor
 
@@ -87,7 +96,6 @@ btn_clr   = 0.2;    // per-side clearance in the pocket
 plate_t   = 1.2;    // button carrier plate
 btn_leg   = 3.0;    // space under a button body: plate + leg/wire room
 leg_below = btn_leg - plate_t;     // how far legs may poke below the plate
-pil_d     = 3.0;    // pillars that hold the carrier plate up
 dish_d    = 9;      // finger dish in the lid
 dish_h    = 1.0;
 act_d     = 4.0;    // actuator clearance hole
@@ -110,6 +118,9 @@ scr_pilot = 1.7;    // M2 self-tapping pilot
 scr_clear = 2.3;
 scr_head  = 4.4;
 boss_dia  = 2*(corner_r - wall + 0.4);
+// the rear pair is slimmed down so it clears the battery, which now runs
+// almost to the back wall
+boss_dia_r = 4.4;
 boss_deep = 8;
 
 // ---------------------------------------------------------------- derived
@@ -121,10 +132,10 @@ sw_p    = [swb.z, swb.x, swb.y];      // placed: lever points +X
 // the grid is centred on the case, so the ESP32 is what it stands on
 cav_h    = max(bat.z + 0.6, btn.z + btn_leg + esp.z + clr_mod);
 
-inner_w = max(esp.x, bat.x) + 2*side_marg;
-b1_y = 0;                     b1_d = chg_p.y;
-b2_y = b1_y + b1_d + band_gap; b2_d = esp.y + 2*fit;
-b3_y = b2_y + b2_d + band_gap; b3_d = bat.y + 2*fit;
+inner_w = max(esp.x, bat.x) + 2*fit;
+b1_y = 0;                    b1_d = chg_p.y;
+b2_y = b1_y + b1_d + sep_t;  b2_d = esp.y + 2*fit;
+b3_y = b2_y + b2_d + sep_t;  b3_d = bat.y + 2*fit;
 inner_l = b3_y + b3_d + end_marg;
 
 out_w  = inner_w + 2*wall;
@@ -142,21 +153,23 @@ btn_c    = [inner_w/2, inner_l/2];
 
 // button pocket / carrier plate geometry
 pkt_ow  = btn.x + 2*btn_clr + 2*rib;
-pil_dx  = btn_pitch + pkt_ow/2 + 0.8;
-// the pillars sit in the band gaps either side of the ESP32, not beside
-// the buttons: the grid is centred and the board is directly underneath
-pil_y   = [b2_y - band_gap/2, b2_y + b2_d + band_gap/2];
-pil_xy  = [for (sx = [-1, 1], y = pil_y) [btn_c.x + sx*pil_dx, y]];
-pil_top = cav_h - btn.z - plate_t;          // top of a pillar = under the plate
-plate_ov = pil_d/2 + 0.5;
-plate_x0 = btn_c.x - pil_dx - plate_ov;  plate_x1 = btn_c.x + pil_dx + plate_ov;
-plate_y0 = pil_y[0]  - plate_ov;         plate_y1 = pil_y[1]  + plate_ov;
+// the two band dividers are the shelf the plate rests on
+sep_y   = [b1_d, b2_y + b2_d];              // front face of each divider
+pil_top = cav_h - btn.z - plate_t;          // shelf height = under the plate
+peg_xy  = [[btn_c.x - 16, sep_y[0] + sep_t/2],
+           [btn_c.x + 16, sep_y[1] + sep_t/2]];
+plate_x0 = 0.3;                 plate_x1 = inner_w - 0.3;
+plate_y0 = sep_y[0];            plate_y1 = sep_y[1] + sep_t;
 
 boss_xy = [[corner_r, corner_r], [out_w-corner_r, corner_r],
            [corner_r, out_l-corner_r], [out_w-corner_r, out_l-corner_r]];
+boss_d  = [boss_dia, boss_dia, boss_dia_r, boss_dia_r];
 
 echo(str("body  ", out_w, " x ", out_l, " x ", out_h, " mm"));
 echo(str("battery slack ", cav_h - bat.z, " mm   button-leg space ", btn_leg, " mm"));
+// the grid has to land on the two dividers, or the plate is a diving board
+assert(btn_c.y - btn_pitch - pkt_ow/2 >= sep_y[0] - 1);
+assert(btn_c.y + btn_pitch + pkt_ow/2 <= sep_y[1] + sep_t + 1);
 
 // ================================================================ helpers
 module rrect(sx, sy, r, h)
@@ -215,11 +228,29 @@ module switch_cradle() {
     at(ox - rib, oy + d,   -weld) cube([w + rib, rib, h]);
 }
 
-module boss(p)
+module boss(p, d)
     intersection() {
-        translate([p.x, p.y, floor_t - weld]) cylinder(d = boss_dia, h = cav_h + weld);
+        translate([p.x, p.y, floor_t - weld]) cylinder(d = d, h = cav_h + weld);
         cavity(0, weld);
     }
+
+// Full-width divider between two bands.  It retains the module in front of
+// it and the one behind it, and its top face carries the carrier plate.
+module divider(y, peg)
+    difference() {
+        union() {
+            at(-weld, y, -weld) cube([inner_w + 2*weld, sep_t, pil_top + weld]);
+            at(peg.x, peg.y, pil_top) cylinder(d = 2.0, h = 1.0);
+        }
+        cavity(1, weld);            // trimmed back by the rounded cavity
+    }
+
+// The battery runs from the rear divider to the back wall, so only its
+// sides need holding.
+module battery_ribs()
+    for (s = [-1, 1])
+        at(bat_pos.x + (s < 0 ? -fit - rib : bat.x + fit), bat_pos.y, -weld)
+            cube([rib, bat.y, bat.z + weld]);
 
 module tray() {
     difference() {
@@ -232,18 +263,12 @@ module tray() {
     // interior features, added after the cavity is cut
     difference() {
         union() {
-            for (p = boss_xy) boss(p);
-            retainer(bat_pos.x,  bat_pos.y,  bat.x,    bat.y,    bat.z);
-            retainer(esp_pos.x,  esp_pos.y,  esp.x,    esp.y,    esp.z);
-            retainer(chg_pos.x,  chg_pos.y,  chg_p.x,  chg_p.y,  chg_lift + chg_p.z);
+            for (i = [0:3]) boss(boss_xy[i], boss_d[i]);
+            for (i = [0, 1]) divider(sep_y[i], peg_xy[i]);
+            battery_ribs();
             charger_feet();
             retainer(buck_pos.x, buck_pos.y, buck.x,   buck.y,   buck.z);
             switch_cradle();
-            for (i = [0:3]) at(pil_xy[i].x, pil_xy[i].y, -weld) {
-                cylinder(d = pil_d, h = pil_top + weld);
-                if (i == 0 || i == 3)                     // two locating pegs
-                    translate([0, 0, pil_top + weld]) cylinder(d = 2.0, h = 1.0);
-            }
         }
         for (p = boss_xy)
             translate([p.x, p.y, tray_h - boss_deep]) cylinder(d = scr_pilot, h = boss_deep + 1);
@@ -279,8 +304,8 @@ module led_socket() {
 }
 
 // Carrier plate: sits under the nine buttons, takes the press force and
-// passes it into the four pillars in the tray floor.  Slots let the
-// (trimmed) legs and their wires through.
+// passes it into the two band dividers.  Slots let the (trimmed) legs and
+// their wires through.
 module plate() {
     translate([0, 0, floor_t + pil_top]) difference() {
         translate([wall + plate_x0, wall + plate_y0, 0])
@@ -290,8 +315,8 @@ module plate() {
                 for (s = [-1, 1])
                     translate([s*2.6 - 0.8, -(btn.y + 0.6)/2, 0])
                         cube([1.6, btn.y + 0.6, plate_t + 2]);
-        for (k = [0, 3])
-            translate([wall + pil_xy[k].x, wall + pil_xy[k].y, -1])
+        for (p = peg_xy)
+            translate([wall + p.x, wall + p.y, -1])
                 cylinder(d = 2.4, h = plate_t + 2);
     }
 }
@@ -307,8 +332,9 @@ module lid_lip() {
         // no lip across the front: the charger sits against that wall and
         // a USB-C plug has to reach it
         translate([-1, -1, tray_h - lip_h - 1]) cube([out_w + 2, wall + 3, lip_h + 2]);
-        for (p = boss_xy)
-            translate([p.x, p.y, tray_h - lip_h - 1]) cylinder(d = boss_dia + 1.2, h = lip_h + 2);
+        for (i = [0:3])
+            translate([boss_xy[i].x, boss_xy[i].y, tray_h - lip_h - 1])
+                cylinder(d = boss_d[i] + 1.2, h = lip_h + 2);
     }
 }
 
