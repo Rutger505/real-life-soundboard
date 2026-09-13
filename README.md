@@ -4,32 +4,59 @@ A Bluetooth soundboard: press a physical button on an ESP32 and the paired Andro
 
 ## What it is
 
-9 physical buttons wired to an ESP32 send BLE GATT notifications to an Android app. Each button maps to an audio file you configure via the app. Press a button → hear a sound.
+9 physical buttons in a 3x3 matrix, wired to an ESP32, send BLE GATT notifications to an Android app. Each button maps to an audio file you configure via the app. Press a button → hear a sound.
 
 The Android app runs a **foreground service**, so the BLE connection and audio playback keep working while you use your phone normally, with the screen off, or with the app closed. An ongoing notification shows the connection status and the last button that was pressed.
 
 ## Hardware
 
-- ESP32 dev board (any variant with 18+ GPIO pins)
-- 9 momentary push buttons
-- 1 LED (status indicator)
-- Resistors: the firmware uses internal pull-downs, so no external resistors needed for buttons. Use a 220–330Ω resistor in series with the LED.
+- ESP32 dev board (ESP32-WROOM; a WROVER uses GPIO16/17 for PSRAM)
+- 9 momentary push buttons, wired as a 3x3 matrix
+- 1 LED (status indicator) and a 220-330 ohm resistor in series with it
+- Optional: 9x 1N4148 diodes, one per button (see below)
 
-### Wiring table
+### Pins
 
-| Button | GPIO | LED  | GPIO |
-|--------|------|------|------|
-| 1      | 4    | LED+ | 2    |
-| 2      | 23   |      |      |
-| 3      | 25   |      |      |
-| 4      | 13   |      |      |
-| 5      | 14   |      |      |
-| 6      | 26   |      |      |
-| 7      | 16   |      |      |
-| 8      | 17   |      |      |
-| 9      | 18   |      |      |
+The matrix needs 6 GPIOs for 9 buttons. The three rows sit next to each other
+on one header and the three columns on the other, on both the 30-pin DevKit V1
+and the 38-pin DevKitC. None of them is a strapping pin or a flash pin.
 
-Connect each button between GPIO pin and 3.3V. The firmware configures internal pull-downs (press = high) so no external resistors are needed.
+| Signal   | GPIO | Firmware setup                  |
+|----------|------|---------------------------------|
+| Row 0    | 25   | input, internal pull-up         |
+| Row 1    | 26   | input, internal pull-up         |
+| Row 2    | 27   | input, internal pull-up         |
+| Column 0 | 17   | open-drain output               |
+| Column 1 | 16   | open-drain output               |
+| Column 2 | 4    | open-drain output               |
+| LED+     | 2    | push-pull output, through the resistor |
+
+GPIO2 is a strapping pin. It has to be low or floating to flash the board, and
+an LED to ground leaves it that way.
+
+### Button matrix
+
+Every button has one leg on a row wire and the other on a column wire. The
+button in row `r`, column `c` sends index `r * 3 + c` to the phone. Looking at
+the top of the case with the USB-C port towards you, row 0 is the one furthest
+away and column 0 is on the left:
+
+|            | Column 0 (GPIO17) | Column 1 (GPIO16) | Column 2 (GPIO4) |
+|------------|-------------------|-------------------|------------------|
+| Row 0 (GPIO25) | button 1 (index 0) | button 2 (index 1) | button 3 (index 2) |
+| Row 1 (GPIO26) | button 4 (index 3) | button 5 (index 4) | button 6 (index 5) |
+| Row 2 (GPIO27) | button 7 (index 6) | button 8 (index 7) | button 9 (index 8) |
+
+No resistors are needed. While nobody presses anything, all columns are pulled
+low and the firmware sleeps until a row goes low. It then scans one column at a
+time every 5 ms until every button is released. The columns are open-drain, so
+they can only pull low. Two buttons held in the same row can never short two
+driven outputs together.
+
+Without diodes, holding three buttons that form an L makes the fourth corner of
+that rectangle read as pressed too. One or two buttons at a time always read
+correctly. If you want any combination to work, put a 1N4148 in series with
+each button, anode on the row side and cathode (the band) on the column side.
 
 ## Enclosure (3D print)
 
@@ -126,7 +153,7 @@ Fasteners: 4x M2x8 self-tapping, into the corner bosses.
 | Service        | `12345678-1234-1234-1234-123456789012` |
 | Characteristic | `12345678-1234-1234-1234-123456789abc` |
 
-The characteristic is notify-only. When a button is pressed (pin driven high) the ESP32 sends a 1-byte notification with the button index (0–8).
+The characteristic is notify-only. When a button is pressed the ESP32 sends a 1-byte notification with the button index (0–8).
 
 ## ESP32 firmware
 
