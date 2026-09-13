@@ -9,7 +9,7 @@ use esp_hal::gpio::Output;
 /// How long the LED stays lit after a press.
 const FLASH: Duration = Duration::from_millis(60);
 
-/// Drive the status LED (GPIO2, active-high). Owns the pin for the whole run.
+/// Drive the status LED (GPIO18, active-high). Owns the pin for the whole run.
 #[embassy_executor::task]
 pub async fn led_task(mut led: Output<'static>) {
     led.set_low();

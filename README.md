@@ -29,17 +29,24 @@ and the 38-pin DevKitC. None of them is a strapping pin or a flash pin.
 | Column 0 | 17   | open-drain output               |
 | Column 1 | 16   | open-drain output               |
 | Column 2 | 4    | open-drain output               |
-| LED+     | 2    | push-pull output, through the resistor |
+| LED+     | 18   | push-pull output, through the resistor |
 
-GPIO2 is a strapping pin. It has to be low or floating to flash the board, and
-an LED to ground leaves it that way.
+The LED is not on GPIO2 because most dev boards already have their own LED on
+that pin. GPIO18 is on the same header as the columns, two pins past GPIO17
+on both boards, and it is not a strapping pin.
+
+"Open-drain" is a firmware setting, not something you wire. A normal output
+drives its pin to either 3.3 V or ground. An open-drain output can only pull
+its pin to ground, or let go of it. When a column lets go, the row's pull-up
+brings the line back to 3.3 V.
 
 ### Button matrix
 
-Every button has one leg on a row wire and the other on a column wire. The
-button in row `r`, column `c` sends index `r * 3 + c` to the phone. Looking at
-the top of the case with the USB-C port towards you, row 0 is the one furthest
-away and column 0 is on the left:
+A row is three buttons side by side, left to right. A column is three buttons
+one behind the other, front to back. Every button has one leg on a row wire and
+the other on a column wire. The button in row `r`, column `c` sends index
+`r * 3 + c` to the phone. Looking at the top of the case with the USB-C port
+towards you, row 0 is the one furthest away and column 0 is on the left:
 
 |            | Column 0 (GPIO17) | Column 1 (GPIO16) | Column 2 (GPIO4) |
 |------------|-------------------|-------------------|------------------|
@@ -149,11 +156,15 @@ Fasteners: 4x M2x8 self-tapping, into the corner bosses.
 4. Drop the plate over them. The legs come through the slots, and the four
    corner holes locate on the pegs on top of the corner posts.
 5. Solder now, not earlier. With the plate on, the lid assembly lies face down
-   in front of you and the leg tips stand 1.8 mm proud of the plate. Run one
+   in front of you and the leg tips stand 1.8 mm proud of the plate. Turn it so
+   the LED socket is in the far right corner. Left is then still left, but the
+   rows are reversed: row 0 is now the one nearest you. Getting this wrong only
+   changes which button sends which index, and the app can reassign sounds to
+   match. It does not break anything. Run one
    bare wire along each row, soldered to the three left-hand legs, and one
    insulated wire along each column, stripped where it meets the three
    right-hand legs. The column wires cross the row wires, which is why they
-   need the insulation. That is 6 wires to the ESP32, 8 with the LED.
+   need the insulation. That is 6 wires to the ESP32, 8 with the LED (GPIO18 and GND).
 6. Fit the modules in the tray, solder the matrix wires to GPIO25/26/27 and
    GPIO17/16/4, close the lid and drive the four screws.
 

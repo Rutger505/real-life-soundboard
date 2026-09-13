@@ -54,8 +54,9 @@ async fn main(spawner: Spawner) {
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
 
-    // Status LED: GPIO2, active-high, off.
-    let led = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
+    // Status LED: GPIO18, active-high, off. Not GPIO2: that one also drives
+    // the dev board's own LED.
+    let led = Output::new(peripherals.GPIO18, Level::Low, OutputConfig::default());
     spawner.spawn(led::led_task(led).unwrap());
 
     // Button matrix, 6 wires for 9 keys. The index notified to the phone is

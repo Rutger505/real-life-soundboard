@@ -116,7 +116,7 @@ cap_edge  = 0.4;    // chamfer on the top edge
 cap_lead  = 0.8;    // chamfer around the bore, leads the finger in
 
 /* [Status LED] ------------------------------------------------------ */
-// 3 mm LED, GPIO2.  Front right, over the power switch: the switch is only
+// 3 mm LED, GPIO18.  Front right, over the power switch: the switch is only
 // 4 mm tall so the socket clears it easily, and this is as close to the
 // corner as the screw boss allows.  Kept relative to the right-hand wall,
 // so it follows the cavity instead of sitting at a fixed number.
