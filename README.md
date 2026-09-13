@@ -205,14 +205,22 @@ The characteristic is notify-only. When a button is pressed the ESP32 sends a 1-
 
 ## ESP32 firmware
 
-Requires the Rust ESP-IDF toolchain. Follow the [esp-rs book](https://esp-rs.github.io/book/) to install `espup` and the Xtensa toolchain.
+Bare-metal (`no_std`) Xtensa, built on [esp-hal](https://github.com/esp-rs/esp-hal) with
+[trouble](https://github.com/embassy-rs/trouble) as the BLE host and `esp-radio` as the
+controller. **There is no ESP-IDF involved**, and no `ldproxy`: `esp-hal` ships the linker
+script and `rust-toolchain.toml` pins the `esp` channel. The target is
+`xtensa-esp32-none-elf`, and `core`/`alloc` are compiled from source via `build-std`.
+
+The Xtensa toolchain still comes from `espup`, per the
+[esp-rs book](https://esp-rs.github.io/book/):
 
 ```bash
-# Install toolchain (once)
-cargo install espup
-espup install
+# Install toolchain (once). Run this from $HOME, not from esp32/ --
+# rust-toolchain.toml there pins the 'esp' channel before it exists.
+cargo install espup      # or grab the prebuilt binary from the espup releases
+espup install            # Xtensa Rust + Xtensa LLVM + GCC xtensa-esp-elf
 
-# Source the environment
+# Load the environment into the shell (espup writes this file)
 . $HOME/export-esp.sh
 
 # Build
@@ -220,18 +228,33 @@ cd esp32
 cargo build --release
 
 # Flash (replace /dev/ttyUSB0 with your port)
-espflash flash target/xtensa-esp32-espidf/release/soundboard-esp32 --port /dev/ttyUSB0 --monitor
+espflash flash target/xtensa-esp32-none-elf/release/soundboard-esp32 \
+  --port /dev/ttyUSB0 --monitor
 ```
+
+The resulting binary is `esp32/target/xtensa-esp32-none-elf/release/soundboard-esp32`
+(Xtensa ELF, ~5.4 MB unstripped with debug info). A cold release build takes roughly
+7 minutes, since `build-std` recompiles `core` and `alloc` first.
+
+> The `esp-*` and `trouble-host` versions in `esp32/Cargo.toml` are pinned to specific git
+> revisions on purpose — the crates.io releases do not form a coherent set (`esp-radio`
+> 0.18 speaks `bt-hci` 0.8 while `trouble-host` 0.7 needs 0.9). See the comment in that
+> file before bumping anything.
 
 ## Android app
 
-Requires Android Studio (Hedgehog or newer) and Android SDK 35.
+Requires JDK 17 and Android SDK 35 (`platforms;android-35`, `build-tools;35.0.0`).
+Android Studio is optional — the Gradle wrapper (Gradle 9.5) is enough on a headless
+machine, it just needs `local.properties` pointing at the SDK:
 
 ```bash
 cd android
+echo "sdk.dir=$ANDROID_HOME" > local.properties
 ./gradlew assembleDebug
 # Or open in Android Studio and run
 ```
+
+Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 
 **Setup:**
 1. Install the APK on your Android device (API 26+).
@@ -243,7 +266,7 @@ cd android
 ## Project structure
 
 ```
-esp32/          Rust firmware (std, esp-idf-hal, esp-idf-svc)
+esp32/          Rust firmware (no_std, esp-hal + esp-radio + trouble-host BLE)
 android/        Android app (Kotlin, Jetpack Compose)
 case/           OpenSCAD source for the printed enclosure
 ```
