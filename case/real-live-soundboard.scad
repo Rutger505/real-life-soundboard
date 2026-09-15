@@ -14,12 +14,13 @@ esp_wire_h = 8;             // wires soldered onto the pins
 chg   = [28,  18,   4];     // USB-C centred on an 18 mm edge
 chg_lift = 1.5;             // keeps the TP4056's heat off the floor
 chg_foot = 3.0;
-chg_fit_y = 0.2;            // small, so the USB-C receptacle stays near the wall
+chg_end_fit = 0.2;          // small, so the USB-C receptacle stays near the wall
 buck  = [13,  17,   4];
 swb   = [8.5, 4,    3.5];
 sw_lever_h = 8;
 sw_slot_w = 5.5;
 sw_stub   = 1.0;            // back rib only at the ends, the pins leave through the middle
+sw_pin_l  = 2.5;            // pins trimmed short, plus the solder joint, before the buck-boost
 btn   = [5.9, 5.9,  3.3];   // base to flat top
 btn_nub   = 1.4;
 btn_top   = 3.9;            // base to nub tops
@@ -72,12 +73,13 @@ scr_pilot = 1.7;    // M2 self-tapping
 scr_clear = 2.3;
 scr_head  = 4.4;
 boss_dia  = 2*(corner_r - wall + 0.4);
-boss_dia_r = 4.4;   // slimmer, to leave the battery room
+boss_dia_s = 4.4;   // slimmer, where the charger or the battery sits in the corner
+boss_in   = corner_r - 0.5;     // centre from the outside faces, as close as the countersink allows
 boss_deep = 8;
 
 // ---------------------------------------------------------------- derived
 sw_out  = sw_lever_h - swb.z;
-chg_p   = [chg.y, chg.x, chg.z];      // USB-C faces -Y
+chg_p   = [chg.x, chg.y, chg.z];      // USB-C faces -X
 sw_p    = [swb.z, swb.x, swb.y];      // lever points +X
 
 cav_h = max(bat.z + 0.6, esp.z + clr_mod + esp_wire_h + btn_leg + btn.z);
@@ -85,17 +87,15 @@ cav_h = max(bat.z + 0.6, esp.z + clr_mod + esp_wire_h + btn_leg + btn.z);
 bat_pkt = [bat.x + bat_room.x + 2*fit, bat.y + bat_room.y + 2*fit];
 inner_w = max(esp.x + 2*fit, bat_pkt.x);
 
-b1_y = 0;                          b1_d = chg_p.y + chg_fit_y;
+boss_reach = boss_in - wall + boss_dia_s/2;
+chg_pos  = [0, boss_reach + fit];
+
+b1_y = 0;                          b1_d = chg_pos.y + chg_p.y + fit;
 b2_y = b1_d + post_t;              b2_d = esp.y + 2*fit;
 b3_y = b2_y + b2_d + post_t + rib; b3_d = bat_pkt.y;
 
-// stop the battery pocket where its corner would hit a rear boss
-boss_ctr = corner_r - wall;
 bat_pkt_x = (inner_w - bat_pkt.x)/2;
-boss_dx   = bat_pkt_x - boss_ctr;
-end_marg  = boss_ctr
-          + (boss_dx < boss_dia_r/2 ? sqrt(pow(boss_dia_r/2, 2) - pow(boss_dx, 2)) : 0);
-inner_l = b3_y + b3_d + end_marg;
+inner_l = b3_y + b3_d;
 
 out_w  = inner_w + 2*wall;
 out_l  = inner_l + 2*wall;
@@ -103,8 +103,7 @@ tray_h = floor_t + cav_h;
 out_h  = tray_h + top_t;
 lid_o  = rim_t + lid_clr;
 
-chg_pos  = [(inner_w - chg_p.x)/2, 0];
-buck_pos = [fit, b1_d - buck.y - fit];
+buck_pos = [chg_p.x + chg_end_fit + rib + fit, b1_d - buck.y - fit];
 sw_pos   = [inner_w + wall - 0.4 - sw_out - sw_p.x, 9];
 esp_pos  = [(inner_w - esp.x)/2, b2_y + fit];
 bat_pos  = [(inner_w - bat.x)/2, b3_y + (b3_d - bat.y)/2];
@@ -137,9 +136,9 @@ led_seat = cav_h - led_h - led_slack;
 led_bot  = led_seat - led_bar_t;
 led_gus  = led_bot - (inner_w - led_x0);
 
-boss_xy = [[corner_r, corner_r], [out_w-corner_r, corner_r],
-           [corner_r, out_l-corner_r], [out_w-corner_r, out_l-corner_r]];
-boss_d  = [boss_dia, boss_dia, boss_dia_r, boss_dia_r];
+boss_xy = [[boss_in, boss_in], [out_w-boss_in, boss_in],
+           [boss_in, out_l-boss_in], [out_w-boss_in, out_l-boss_in]];
+boss_d  = [boss_dia_s, boss_dia, boss_dia_s, boss_dia_s];
 
 echo(str("body ", out_w, " x ", out_l, " x ", out_h));
 
@@ -155,7 +154,9 @@ assert(dish_d < btn_pitch);
 assert(led_pos.y + led_or/2 <= b1_d);
 assert(led_gus >= sw_p.z + weld);
 assert(led_leg_gap <= led_d - 1);
-assert(buck_pos.x + buck.x + fit + rib <= chg_pos.x - fit - rib);
+assert(buck_pos.x + buck.x + fit <= sw_pos.x - sw_pin_l);
+assert(boss_reach < bat_pos.x);
+assert(sqrt(2)*(corner_r - boss_in) + scr_head/2 + 0.5 <= corner_r - lid_o);   // countersink keeps 0.5 of lid corner
 
 // ================================================================ helpers
 module rrect(sx, sy, r, h)
@@ -180,9 +181,10 @@ module charger_feet()
             cylinder(d = chg_foot, h = chg_lift + weld);
 
 module usbc_cut() {
+    y = wall + chg_pos.y + chg_p.y/2;
     z = floor_t + chg_lift + 0.4;
-    translate([out_w/2 - 5.25, -1, z]) cube([10.5, wall + 2, 4.2]);
-    translate([out_w/2 - 6.5, -1, z - 1]) cube([13, 1.8, 6.2]);     // overmould relief
+    translate([-1, y - 5.25, z]) cube([wall + 2, 10.5, 4.2]);
+    translate([-1, y - 6.5, z - 1]) cube([1.8, 13, 6.2]);     // overmould relief
 }
 
 module switch_cut() {
@@ -194,19 +196,24 @@ module switch_cut() {
 
 module charger_ribs() {
     h = chg_lift + chg_p.z;
-    for (s = [-1, 1])
-        at(chg_pos.x + (s < 0 ? -fit - rib : chg_p.x + fit), chg_pos.y, -weld)
-            cube([rib, b1_d, h + weld]);
-    at(chg_pos.x - fit - rib, b1_d, -weld) cube([brk_len + rib, rib, h + weld]);
-    at(chg_pos.x + chg_p.x + fit - brk_len, b1_d, -weld) cube([brk_len + rib, rib, h + weld]);
+    x1 = chg_pos.x + chg_p.x + chg_end_fit;
+    y0 = chg_pos.y - fit - rib;
+    y1 = chg_pos.y + chg_p.y + fit;
+    for (y = [y0, y1])
+        at(-weld, y, -weld) cube([x1 + rib + weld, rib, h + weld]);
+    for (y = [y0, y1 - brk_len])
+        at(x1, y, -weld) cube([rib, brk_len + rib, h + weld]);
 }
 
+// The charger's end arms hold the left side. The right side only gets corner
+// arms, so the switch pins have room between them.
 module buck_cradle() {
     ox = buck_pos.x - fit; oy = buck_pos.y - fit;
     w = buck.x + 2*fit;  d = buck.y + 2*fit;  h = buck.z + weld;
-    at(ox + w, oy - rib, -weld) cube([rib, d + 2*rib, h]);
-    at(ox,     oy - rib, -weld) cube([w + rib, rib, h]);
-    at(ox + w - brk_len, oy + d, -weld) cube([brk_len + rib, rib, h]);
+    for (y = [oy - rib, oy + d])
+        at(ox, y, -weld) cube([w + rib, rib, h]);
+    for (y = [oy - rib, oy + d + rib - brk_len])
+        at(ox + w, y, -weld) cube([rib, brk_len, h]);
 }
 
 // The stops beside the wall slot keep the body from sliding out towards the wall.
@@ -244,13 +251,13 @@ module esp_posts()
             cylinder(d = 2.0, h = 1.0);
     }
 
+// The back wall of the case is the back of the pocket.
 module battery_ribs() {
     x0 = bat_pkt_x; x1 = x0 + bat_pkt.x;
-    y0 = b3_y;      y1 = y0 + bat_pkt.y;
+    y0 = b3_y;
     h = bat.z + weld;
     for (x = [x0 - rib, x1])
-        at(x, y0 + bat_lead_gap, -weld) cube([rib, bat_pkt.y - bat_lead_gap + rib, h]);
-    at(x0 - rib, y1, -weld) cube([bat_pkt.x + 2*rib, rib, h]);
+        at(x, y0 + bat_lead_gap, -weld) cube([rib, bat_pkt.y - bat_lead_gap + weld, h]);
     at(x0 + bat_lead_gap, y0 - rib, -weld) cube([bat_pkt.x - 2*bat_lead_gap, rib, h]);
 }
 
