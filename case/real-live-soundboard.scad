@@ -76,6 +76,7 @@ boss_dia  = 2*(corner_r - wall + 0.4);
 boss_dia_s = 4.4;   // slimmer, where the charger or the battery sits in the corner
 boss_in   = corner_r - 0.5;     // centre from the outside faces, as close as the countersink allows
 boss_deep = 8;
+boss_hang = [true, false, true, true];  // front left, front right, rear left, rear right
 
 // ---------------------------------------------------------------- derived
 sw_out  = sw_lever_h - swb.z;
@@ -87,12 +88,11 @@ cav_h = max(bat.z + 0.6, esp.z + clr_mod + esp_wire_h + btn_leg + btn.z);
 bat_pkt = [bat.x + bat_room.x + 2*fit, bat.y + bat_room.y + 2*fit];
 inner_w = max(esp.x + 2*fit, bat_pkt.x);
 
-boss_reach = boss_in - wall + boss_dia_s/2;
-chg_pos  = [0, boss_reach + fit];
+chg_pos  = [0, corner_r - wall];       // as far forward as the cavity corner allows
 
 b1_y = 0;                          b1_d = chg_pos.y + chg_p.y + fit;
 b2_y = b1_d + post_t;              b2_d = esp.y + 2*fit;
-b3_y = b2_y + b2_d + post_t + rib; b3_d = bat_pkt.y;
+b3_y = b2_y + b2_d + post_t;       b3_d = bat_pkt.y;     // front rib shares the rear posts' line
 
 bat_pkt_x = (inner_w - bat_pkt.x)/2;
 inner_l = b3_y + b3_d;
@@ -139,6 +139,10 @@ led_gus  = led_bot - (inner_w - led_x0);
 boss_xy = [[boss_in, boss_in], [out_w-boss_in, boss_in],
            [boss_in, out_l-boss_in], [out_w-boss_in, out_l-boss_in]];
 boss_d  = [boss_dia_s, boss_dia, boss_dia_s, boss_dia_s];
+// A hanging boss starts at the bottom of its pilot hole and tapers into its
+// corner at 45 degrees or steeper, from a point this far below.
+boss_z0   = tray_h - boss_deep;
+boss_drop = sqrt(2)*boss_in + boss_dia_s/2;
 
 echo(str("body ", out_w, " x ", out_l, " x ", out_h));
 
@@ -155,7 +159,9 @@ assert(led_pos.y + led_or/2 <= b1_d);
 assert(led_gus >= sw_p.z + weld);
 assert(led_leg_gap <= led_d - 1);
 assert(buck_pos.x + buck.x + fit <= sw_pos.x - sw_pin_l);
-assert(boss_reach < bat_pos.x);
+// the taper rises at least 1 mm per mm from its lowest point, the outer corner
+assert(boss_z0 - boss_drop + wall + bat_pkt_x >= floor_t + bat.z + clr_mod);
+assert(boss_z0 - boss_drop + wall + chg_pos.y >= floor_t + chg_lift + chg_p.z + clr_mod);
 assert(sqrt(2)*(corner_r - boss_in) + scr_head/2 + 0.5 <= corner_r - lid_o);   // countersink keeps 0.5 of lid corner
 
 // ================================================================ helpers
@@ -166,9 +172,9 @@ module rrect(sx, sy, r, h)
 // inner-cavity coordinates
 module at(x, y, z = 0) translate([wall + x, wall + y, floor_t + z]) children();
 
-module cavity(extra = 0, drop = 0)
-    translate([wall, wall, floor_t - drop])
-        rrect(inner_w, inner_l, corner_r - wall, cav_h + extra + drop);
+module cavity(extra = 0, drop = 0, grow = 0)
+    translate([wall - grow, wall - grow, floor_t - drop])
+        rrect(inner_w + 2*grow, inner_l + 2*grow, corner_r - wall + grow, cav_h + extra + drop);
 
 module each_key()
     for (i = [-1:1], j = [-1:1])
@@ -194,15 +200,19 @@ module switch_cut() {
     translate([out_w - 0.8, y - 4.5, -1]) cube([2, 9, z + 4]);       // finger relief, open at the bed so no one-layer lip
 }
 
+// The front wall is thickened up to the charger instead of a rib with a gap behind it.
 module charger_ribs() {
     h = chg_lift + chg_p.z;
     x1 = chg_pos.x + chg_p.x + chg_end_fit;
-    y0 = chg_pos.y - fit - rib;
+    y0 = chg_pos.y - fit;
     y1 = chg_pos.y + chg_p.y + fit;
-    for (y = [y0, y1])
-        at(-weld, y, -weld) cube([x1 + rib + weld, rib, h + weld]);
+    intersection() {
+        at(-weld, -weld, -weld) cube([x1 + rib + weld, y0 + weld, h + weld]);
+        cavity(0, weld, weld);
+    }
+    at(-weld, y1, -weld) cube([x1 + rib + weld, rib, h + weld]);
     for (y = [y0, y1 - brk_len])
-        at(x1, y, -weld) cube([rib, brk_len + rib, h + weld]);
+        at(x1, y, -weld) cube([rib, brk_len, h + weld]);
 }
 
 // The charger's end arms hold the left side. The right side only gets corner
@@ -230,14 +240,18 @@ module switch_cradle() {
         at(ox + w, y, -weld) cube([stop_w, stop_d, h]);
 }
 
-// The hull fills the corner behind the boss, so a slim rear boss is still tied to the walls.
-module boss(p, d) {
+// The hull fills the corner behind the boss, so a slim boss is still tied to the walls.
+// A hanging boss leaves the floor free for the charger or the battery below it.
+module boss(p, d, hang) {
     c = [p.x < out_w/2 ? 0 : out_w, p.y < out_l/2 ? 0 : out_l];
+    z0 = hang ? boss_z0 : floor_t - weld;
     intersection() {
         hull() {
-            translate([p.x, p.y, floor_t - weld]) cylinder(d = d, h = cav_h + weld);
-            translate([min(p.x, c.x), min(p.y, c.y), floor_t - weld])
-                cube([abs(p.x - c.x), abs(p.y - c.y), cav_h + weld]);
+            translate([p.x, p.y, z0]) cylinder(d = d, h = tray_h - z0);
+            translate([min(p.x, c.x), min(p.y, c.y), z0])
+                cube([abs(p.x - c.x), abs(p.y - c.y), tray_h - z0]);
+            if (hang)
+                translate([c.x - 0.005, c.y - 0.005, z0 - boss_drop]) cube(0.01);
         }
         cavity(0, weld);
     }
@@ -297,7 +311,7 @@ module tray() {
 
     difference() {
         union() {
-            for (i = [0:3]) boss(boss_xy[i], boss_d[i]);
+            for (i = [0:3]) boss(boss_xy[i], boss_d[i], boss_hang[i]);
             esp_posts();
             battery_ribs();
             charger_ribs();
