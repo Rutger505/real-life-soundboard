@@ -10,6 +10,8 @@ rustflags = [
   # Needed for esp-backtrace to walk the stack on a panic.
   "-C", "force-frame-pointers",
 ]
+runner = "espflash flash --monitor --chip esp32"
+
 
 # The Xtensa target has no prebuilt std/core, so build the sysroot crates we
 # actually use (core + alloc for the BLE host's heap-backed collections).
