@@ -55,3 +55,6 @@ esp-println            = { git = "https://github.com/embassy-rs/esp-hal.git", re
 esp-radio              = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
 esp-rtos               = { git = "https://github.com/embassy-rs/esp-hal.git", rev = "b7eec0f" }
 embassy-executor       = { git = "https://github.com/embassy-rs/embassy.git", rev = "1d3c3de" }
+# Must come from the same checkout as embassy-executor. Otherwise esp-rtos's
+# timer queue links against the crates.io copy and no Timer ever fires.
+embassy-executor-timer-queue = { git = "https://github.com/embassy-rs/embassy.git", rev = "1d3c3de" }
