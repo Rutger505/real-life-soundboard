@@ -57,6 +57,8 @@ class SoundboardService : Service() {
                 if (index in 0..8) onButtonPressed(index)
             }
             ACTION_RELOAD -> reloadSlots()
+            // Opening the app lands here, so it doubles as a manual retry.
+            null -> bleManager.startScan()
         }
         // Restart if killed by the system so the connection self-heals.
         return START_STICKY
@@ -149,32 +151,28 @@ class SoundboardService : Service() {
 
         /** Start the service in the foreground (safe to call repeatedly). */
         fun start(context: Context) {
-            val intent = Intent(context, SoundboardService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            send(context, Intent(context, SoundboardService::class.java))
         }
 
         /** Ask the service to (re)preload all slots from prefs. */
         fun reload(context: Context) {
-            val intent = Intent(context, SoundboardService::class.java).apply {
+            send(context, Intent(context, SoundboardService::class.java).apply {
                 action = ACTION_RELOAD
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            })
         }
 
         /** Ask the service to play the audio configured for [index]. */
         fun play(context: Context, index: Int) {
-            val intent = Intent(context, SoundboardService::class.java).apply {
+            send(context, Intent(context, SoundboardService::class.java).apply {
                 action = ACTION_PLAY
                 putExtra(EXTRA_INDEX, index)
-            }
+            })
+        }
+
+        // Android 14+ throws when a connectedDevice foreground service starts
+        // without the Bluetooth permission, so wait until it has been granted.
+        private fun send(context: Context, intent: Intent) {
+            if (!hasBlePermissions(context)) return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {

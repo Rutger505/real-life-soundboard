@@ -4,7 +4,10 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -18,6 +21,17 @@ private const val TAG = "BleManager"
 val SERVICE_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-123456789012")
 val CHAR_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-123456789abc")
 val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+fun hasBlePermissions(context: Context): Boolean {
+    val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+    } else {
+        listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+    return perms.all {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+}
 
 @SuppressLint("MissingPermission")
 class BleManager(
@@ -42,6 +56,29 @@ class BleManager(
     // don't drain the battery hunting for a device that's simply switched off.
     private var reconnectAttempts = 0
 
+    // Turning Bluetooth off silently kills our scan and link, and turning it
+    // back on tells us nothing, so without this we would wait forever.
+    private val adapterStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+                BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> onAdapterOff()
+                BluetoothAdapter.STATE_ON -> {
+                    reconnectAttempts = 0
+                    startScan()
+                }
+            }
+        }
+    }
+
+    init {
+        ContextCompat.registerReceiver(
+            context,
+            adapterStateReceiver,
+            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             Log.d(TAG, "Found device: ${result.device.address}")
@@ -51,6 +88,8 @@ class BleManager(
 
         override fun onScanFailed(errorCode: Int) {
             Log.e(TAG, "Scan failed: $errorCode")
+            scanning = false
+            scheduleReconnect()
         }
     }
 
@@ -59,15 +98,12 @@ class BleManager(
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     Log.i(TAG, "Connected to GATT server")
-                    // Reset backoff so the next drop retries quickly again.
-                    reconnectAttempts = 0
                     gatt.discoverServices()
-                    onConnectionStateChanged(true)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    Log.i(TAG, "Disconnected from GATT server")
+                    Log.i(TAG, "Disconnected from GATT server (status $status)")
                     gatt.close()
-                    bluetoothGatt = null
+                    if (gatt == bluetoothGatt) bluetoothGatt = null
                     onConnectionStateChanged(false)
                     scheduleReconnect()
                 }
@@ -77,29 +113,41 @@ class BleManager(
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 Log.e(TAG, "Service discovery failed: $status")
+                gatt.disconnect()
                 return
             }
             val characteristic = gatt
                 .getService(SERVICE_UUID)
                 ?.getCharacteristic(CHAR_UUID)
-            if (characteristic == null) {
-                Log.e(TAG, "Characteristic not found")
-                return
+            val descriptor = characteristic?.getDescriptor(CCCD_UUID)
+            if (characteristic == null || descriptor == null ||
+                !gatt.setCharacteristicNotification(characteristic, true) ||
+                !enableNotifications(gatt, descriptor)
+            ) {
+                Log.e(TAG, "Could not subscribe to button notifications")
+                gatt.disconnect()
             }
-            gatt.setCharacteristicNotification(characteristic, true)
-            val descriptor = characteristic.getDescriptor(CCCD_UUID)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-            } else {
-                @Suppress("DEPRECATION")
-                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                @Suppress("DEPRECATION")
-                gatt.writeDescriptor(descriptor)
-            }
-            Log.i(TAG, "Subscribed to notifications")
         }
 
-        @Suppress("DEPRECATION")
+        // Only now is the link useful, so only now do we report "connected".
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int,
+        ) {
+            if (descriptor.uuid != CCCD_UUID) return
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.i(TAG, "Subscribed to notifications")
+                reconnectAttempts = 0
+                onConnectionStateChanged(true)
+            } else {
+                Log.e(TAG, "Subscribing failed: $status")
+                gatt.disconnect()
+            }
+        }
+
+        // Android 12 and older only call this deprecated variant.
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -128,11 +176,11 @@ class BleManager(
     }
 
     fun startScan() {
-        if (!hasPermissions()) {
+        if (!hasBlePermissions(context)) {
             Log.e(TAG, "Missing BLE permissions")
             return
         }
-        if (scanning) return
+        if (scanning || bluetoothGatt != null) return
         val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
         val filter = ScanFilter.Builder()
             .setServiceUuid(android.os.ParcelUuid(SERVICE_UUID))
@@ -155,14 +203,37 @@ class BleManager(
     fun stopScan() {
         if (!scanning) return
         scanning = false
-        bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+        try {
+            bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+        } catch (e: IllegalStateException) {
+            // Thrown while the adapter is turning off, which stops the scan anyway.
+        }
         Log.i(TAG, "BLE scan stopped")
     }
 
     private fun connect(device: BluetoothDevice) {
         bluetoothGatt?.close()
-        bluetoothGatt = device.connectGatt(context, false, gattCallback)
+        bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         Log.i(TAG, "Connecting to ${device.address}")
+    }
+
+    private fun enableNotifications(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) ==
+                BluetoothStatusCodes.SUCCESS
+        } else {
+            @Suppress("DEPRECATION")
+            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            @Suppress("DEPRECATION")
+            gatt.writeDescriptor(descriptor)
+        }
+
+    private fun onAdapterOff() {
+        handler.removeCallbacksAndMessages(null)
+        stopScan()
+        bluetoothGatt?.close()
+        bluetoothGatt = null
+        onConnectionStateChanged(false)
     }
 
     private fun scheduleReconnect() {
@@ -176,21 +247,11 @@ class BleManager(
     }
 
     fun disconnect() {
+        context.unregisterReceiver(adapterStateReceiver)
         handler.removeCallbacksAndMessages(null)
         stopScan()
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
-    }
-
-    private fun hasPermissions(): Boolean {
-        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
-        } else {
-            listOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        return perms.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
     }
 }

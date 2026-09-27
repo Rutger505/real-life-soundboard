@@ -26,12 +26,10 @@ class AudioPlayer {
     private var appContext: Context? = null
 
     /**
-     * Media volume that was in effect before we cranked it to max. Saved on the
-     * first play of a burst and restored once nothing is playing anymore, so
-     * the phone's volume goes back to what the user had set.
+     * Media volume that was in effect before we cranked it to max, restored
+     * when the current sound ends so the phone goes back to what the user set.
      */
     private var savedMediaVolume: Int? = null
-    private var activePlayers = 0
 
     private val mediaAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -42,21 +40,19 @@ class AudioPlayer {
     @Synchronized
     fun preload(context: Context, index: Int, uri: Uri) {
         if (appContext == null) appContext = context.applicationContext
-        slots.remove(index)?.player?.let {
-            if (it == current) current = null
-            it.release()
-        }
+        releaseSlot(index)
         try {
             val mp = MediaPlayer()
             mp.setAudioAttributes(mediaAttributes)
             val slot = Slot(mp, ready = false)
             mp.setOnPreparedListener { slot.ready = true }
-            mp.setOnErrorListener { _, what, extra ->
+            mp.setOnErrorListener { player, what, extra ->
                 Log.e("AudioPlayer", "MediaPlayer error slot $index: $what/$extra")
                 slot.ready = false
+                onPlaybackFinished(player)
                 true
             }
-            mp.setOnCompletionListener { onPlaybackFinished() }
+            mp.setOnCompletionListener { onPlaybackFinished(it) }
             mp.setDataSource(context, uri)
             mp.prepareAsync() // non-blocking; readiness flips in the listener
             slots[index] = slot
@@ -68,8 +64,15 @@ class AudioPlayer {
     /** Drop the preloaded audio for [index] (e.g. slot cleared). */
     @Synchronized
     fun clear(index: Int) {
+        releaseSlot(index)
+    }
+
+    private fun releaseSlot(index: Int) {
         slots.remove(index)?.player?.let {
-            if (it == current) current = null
+            if (it == current) {
+                current = null
+                restoreMediaVolume()
+            }
             it.release()
         }
     }
@@ -86,17 +89,11 @@ class AudioPlayer {
         // comes out loud even if the phone's media volume is turned down or
         // the ringer is silenced (media is a separate stream from ring/notif).
         forceMediaVolumeMax()
-        // One sound at a time: stop whatever is currently playing. Pausing an
-        // active player won't fire its completion listener, so decrement here.
         current?.let {
-            if (it != slot.player && it.isPlaying) {
-                it.pause()
-                if (activePlayers > 0) activePlayers--
-            }
+            if (it != slot.player && it.isPlaying) it.pause()
         }
         slot.player.seekTo(0)
         slot.player.start()
-        activePlayers++
         current = slot.player
     }
 
@@ -110,8 +107,8 @@ class AudioPlayer {
             val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
             val currentVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-            // Only capture the user's level once per burst, and never capture
-            // our own max (so overlapping plays don't overwrite the saved value).
+            // Never capture our own max, so a press during a sound that is still
+            // playing doesn't overwrite the user's saved level.
             if (savedMediaVolume == null && currentVol != max) {
                 savedMediaVolume = currentVol
             }
@@ -123,11 +120,11 @@ class AudioPlayer {
         }
     }
 
-    /** Called when a player finishes; restore volume once nothing is playing. */
+    // A player we paused to switch sounds never completes, and replaying the
+    // same slot completes only once, so only the current player's end counts.
     @Synchronized
-    private fun onPlaybackFinished() {
-        if (activePlayers > 0) activePlayers--
-        if (activePlayers == 0) restoreMediaVolume()
+    private fun onPlaybackFinished(player: MediaPlayer) {
+        if (player == current) restoreMediaVolume()
     }
 
     /** Put STREAM_MUSIC back to the level the user had before we raised it. */
@@ -147,7 +144,6 @@ class AudioPlayer {
     fun release() {
         // Make sure we don't leave the phone stuck at max volume.
         restoreMediaVolume()
-        activePlayers = 0
         slots.values.forEach { it.player.release() }
         slots.clear()
         current = null
