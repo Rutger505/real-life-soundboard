@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val gitDescribe = providers.exec {
+    commandLine("git", "describe", "--always", "--dirty")
+}.standardOutput.asText.get().trim()
+
 android {
     namespace = "com.rutger.soundboard"
     compileSdk = 35
@@ -13,7 +17,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0+$gitDescribe"
     }
 
     buildTypes {
@@ -33,6 +37,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

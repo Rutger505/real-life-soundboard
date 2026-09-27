@@ -140,7 +140,3 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 esp32/          Rust firmware (no_std, esp-hal + esp-radio + trouble-host BLE)
 android/        Android app (Kotlin, Jetpack Compose)
 ```
-
-## TODO
-
-- Show the app version number in the app, so it is clear which build is installed.
