@@ -134,6 +134,16 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 4. Tap the folder icon on each button slot to assign an audio file.
 5. Press a physical button — the LED blinks and the audio plays on the phone.
 
+## Versioning
+
+Bump the version with every change you ship:
+
+- **Android app:** in `android/app/build.gradle.kts`, raise `versionCode` by one and bump
+  `versionName` (e.g. `1.0` → `1.1`). The build appends the git commit (`1.1+<hash>`, with
+  `-dirty` for uncommitted changes) and the app shows it under the grid, so you can tell
+  which build is installed on the phone.
+- **Firmware:** bump `version` in `esp32/Cargo.toml`.
+
 ## Project structure
 
 ```
