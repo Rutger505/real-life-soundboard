@@ -29,7 +29,9 @@ embassy-futures = "0.1.2"
 embassy-sync = "0.8"
 static_cell = "2.1"
 
-log = "0.4"
+# Compiles out everything below warn, in every crate. A ceiling for ESP_LOG in
+# .cargo/config.toml: to debug, raise both to info.
+log = { version = "0.4", features = ["release_max_level_warn"] }
 
 [profile.release]
 opt-level = "s"

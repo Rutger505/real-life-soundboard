@@ -19,4 +19,5 @@ runner = "espflash flash --monitor --chip esp32"
 build-std = ["core", "alloc"]
 
 [env]
-ESP_LOG = "info"
+# Capped by the release_max_level_* feature on `log` in Cargo.toml.
+ESP_LOG = "warn"

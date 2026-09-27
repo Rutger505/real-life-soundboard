@@ -112,6 +112,13 @@ The resulting binary is `esp32/target/xtensa-esp32-none-elf/release/soundboard-e
 > 0.18 speaks `bt-hci` 0.8 while `trouble-host` 0.7 needs 0.9). See the comment in that
 > file before bumping anything.
 
+### Logging
+
+Builds keep only warnings and errors: the `release_max_level_warn` feature on `log` in
+`esp32/Cargo.toml` compiles everything below that out of every crate, and `ESP_LOG` in
+`esp32/.cargo/config.toml` is set to match. To see button presses and BLE events on the
+serial monitor, raise both to info (`release_max_level_info` and `ESP_LOG = "info"`).
+
 ## Android app
 
 Requires JDK 17 and Android SDK 35 (`platforms;android-35`, `build-tools;35.0.0`).
