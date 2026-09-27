@@ -85,7 +85,7 @@ pub async fn run(bt: BT<'static>) {
                     // disconnect) drops us back to advertising.
                     let gatt = gatt_events_task(&conn);
                     let notify = notify_task(&server, &conn);
-                    let params = conn_params_task(&conn, &stack);
+                    let params = core::future::pending::<()>();
                     select3(gatt, notify, params).await;
                 }
                 Err(e) => {
