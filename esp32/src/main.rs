@@ -66,8 +66,8 @@ async fn main(spawner: Spawner) {
     let row_cfg = InputConfig::default().with_pull(Pull::Up);
     let rows = [
         Input::new(peripherals.GPIO25, row_cfg),
-        Input::new(peripherals.GPIO27, row_cfg),
         Input::new(peripherals.GPIO32, row_cfg),
+        Input::new(peripherals.GPIO13, row_cfg),
     ];
     let col_cfg = OutputConfig::default().with_drive_mode(DriveMode::OpenDrain);
     let cols = [
