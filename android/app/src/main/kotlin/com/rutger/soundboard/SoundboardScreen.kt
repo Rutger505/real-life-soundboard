@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -53,9 +54,10 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            items(9) { index ->
+            gridItems(sounds, key = { it.id }) { entry ->
+                val index = entry.id
                 SoundButton(
-                    entry = sounds[index],
+                    entry = entry,
                     isActive = activeButton == index,
                     onFileSelected = { uri -> viewModel.setAudioFile(index, uri) },
                     onBrowseMyInstants = { browserSlot = index },
@@ -149,7 +151,7 @@ fun SoundButton(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = "${entry.id + 1}",
+            text = "${buttonLabel(entry.id)}",
             fontSize = 20.sp,
             color = contentColor,
         )

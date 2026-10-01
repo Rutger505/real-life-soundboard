@@ -54,7 +54,7 @@ class SoundboardService : Service() {
         when (intent?.action) {
             ACTION_PLAY -> {
                 val index = intent.getIntExtra(EXTRA_INDEX, -1)
-                if (index in 0..8) onButtonPressed(index)
+                onButtonPressed(index)
             }
             ACTION_RELOAD -> reloadSlots()
             // Opening the app lands here, so it doubles as a manual retry.
@@ -65,7 +65,7 @@ class SoundboardService : Service() {
     }
 
     private fun onButtonPressed(index: Int) {
-        if (index !in 0..8) return
+        if (index !in BUTTON_IDS) return
         SoundboardState.lastButton.value = index
         SoundboardState.activeButton.value = index
         updateNotification()
@@ -82,7 +82,7 @@ class SoundboardService : Service() {
 
     /** (Re)prepare the MediaPlayers for all configured slots from prefs. */
     private fun reloadSlots() {
-        for (i in 0..8) {
+        for (i in BUTTON_IDS) {
             val uriStr = prefs.getString("uri_$i", null)
             if (uriStr != null) {
                 audioPlayer.preload(this, i, Uri.parse(uriStr))
@@ -109,7 +109,7 @@ class SoundboardService : Service() {
         val last = SoundboardState.lastButton.value
 
         val status = if (connected) "ESP32 connected" else "Reconnecting…"
-        val lastText = last?.let { " • Last: button ${it + 1}" } ?: ""
+        val lastText = last?.let { " • Last: button ${buttonLabel(it)}" } ?: ""
 
         val openIntent = PendingIntent.getActivity(
             this,

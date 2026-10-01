@@ -30,9 +30,7 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
     private val prefs: SharedPreferences =
         application.getSharedPreferences("soundboard_prefs", Context.MODE_PRIVATE)
 
-    private val _sounds = MutableStateFlow(
-        List(9) { i -> loadEntry(i) }
-    )
+    private val _sounds = MutableStateFlow(BUTTON_IDS.map { loadEntry(it) })
     val sounds: StateFlow<List<SoundEntry>> = _sounds.asStateFlow()
 
     // Connection + playback state come straight from the service.
@@ -85,7 +83,7 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
      * thread with success/failure so the UI can react (close dialog / toast).
      */
     fun assignFromMyInstants(slot: Int, sound: MyInstantSound, onDone: (Boolean) -> Unit) {
-        if (slot !in 0..8) { onDone(false); return }
+        if (slot !in BUTTON_IDS) { onDone(false); return }
         viewModelScope.launch {
             _miDownloadingSlot.value = slot
             val context = getApplication<Application>()
@@ -113,15 +111,13 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Empty a slot: forget its audio and tell the service to drop the preload. */
     fun clearSlot(id: Int) {
-        if (id !in 0..8) return
+        if (id !in BUTTON_IDS) return
         val context = getApplication<Application>()
         prefs.edit()
             .remove("uri_$id")
             .remove("name_$id")
             .apply()
-        val updated = _sounds.value.toMutableList()
-        updated[id] = SoundEntry(id)
-        _sounds.value = updated
+        replaceEntry(SoundEntry(id))
         SoundboardService.reload(context)
     }
 
@@ -131,14 +127,16 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
             .putString("uri_$id", uri.toString())
             .putString("name_$id", name)
             .apply()
-        val updated = _sounds.value.toMutableList()
-        updated[id] = SoundEntry(id, uri, name)
-        _sounds.value = updated
+        replaceEntry(SoundEntry(id, uri, name))
+    }
+
+    private fun replaceEntry(entry: SoundEntry) {
+        _sounds.value = _sounds.value.map { if (it.id == entry.id) entry else it }
     }
 
     /** Manual press from the UI — routed through the service so it owns playback. */
     fun onButtonPressed(index: Int) {
-        if (index !in 0..8) return
+        if (index !in BUTTON_IDS) return
         SoundboardService.play(getApplication(), index)
     }
 
