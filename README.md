@@ -141,6 +141,54 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 4. Tap the folder icon on each button slot to assign an audio file.
 5. Press a physical button — the LED blinks and the audio plays on the phone.
 
+## TODO
+
+### Battery level
+
+The ESP32 runs from the buck-boost's steady 3.3 V, so it never sees the battery
+voltage. This can't be done in software alone; it needs a small hardware mod.
+
+**Hardware**
+
+- Voltage divider, 2x 100k, from TP4056 `OUT+` (after the switch, so it draws
+  nothing when off) to GND. The midpoint goes to **GPIO34**: an ADC1 pin, so it
+  doesn't clash with the radio the way ADC2 does, and input-only. At 4.2 V the
+  pin sees 2.1 V. The divider draws about 20 µA.
+- Optional: TP4056 `CHRG` (open-drain, active-low while charging) to a free GPIO
+  with an internal pull-up. While charging, the voltage reads high, so the app
+  shows "charging" instead of a percentage.
+
+**Firmware**
+
+- Standard Battery Service `0x180F`, Battery Level `0x2A19` (1 byte, 0-100 %,
+  read + notify), next to the soundboard service. The button notification stays
+  unchanged.
+- Measure on every button press, before sending, because the voltage sags while
+  the radio transmits. Also measure every ~30 min, so the level still updates
+  when nobody presses anything.
+- Only notify when the percentage has changed.
+- Voltage to percent through a LiPo lookup table (4.2 V = 100 %, ~3.7 V ≈ 40-50 %,
+  3.3 V = 0 %). Expect ±5-10 %, because the classic ESP32 ADC is not precise.
+- Also expose the raw voltage (mV, `u16`) and the charging state in a custom
+  characteristic, for the stats below.
+
+**App**
+
+- Battery percentage in the foreground notification and under the button grid.
+  Warn below 15 %.
+- Battery life estimate: keep timestamped samples since the last charge, and
+  reset when charging ends. Battery capacity (mAh) is a setting.
+  - average current (mA) = Δ% × capacity / Δt
+  - time remaining = remaining % × capacity / average current
+- An info icon opens a modal with the nerd stats:
+  - voltage, percentage, charging state
+  - configured capacity (mAh)
+  - mAh used since the last charge
+  - average consumption (mA, i.e. mAh per hour)
+  - estimated time remaining and estimated time when the battery is empty
+  - time since the last charge, number of samples, last measurement
+  - button presses since the last charge
+
 ## Versioning
 
 Bump the version with every change you ship:
