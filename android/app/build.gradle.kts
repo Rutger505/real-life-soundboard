@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization)
 }
 
 val gitDescribe = providers.exec {
@@ -16,8 +15,8 @@ android {
         applicationId = "com.rutger.soundboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2+$gitDescribe"
+        versionCode = 4
+        versionName = "1.3+$gitDescribe"
     }
 
     buildTypes {
@@ -52,6 +51,5 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.serialization.json)
     debugImplementation(libs.androidx.ui.tooling)
 }
