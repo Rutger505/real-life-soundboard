@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,7 +56,7 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _miLoading.value = true
-            _miResults.value = MyInstants.trending()
+            _miResults.value = MyInstants.trending(getApplication())
             _miLoading.value = false
         }
     }
@@ -66,8 +67,10 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _miLoading.value = true
+            delay(SEARCH_DEBOUNCE_MS)
+            val context = getApplication<Application>()
             _miResults.value =
-                if (q.isEmpty()) MyInstants.trending() else MyInstants.search(q)
+                if (q.isEmpty()) MyInstants.trending(context) else MyInstants.search(context, q)
             _miLoading.value = false
         }
     }
@@ -152,5 +155,9 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
             val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
         }
+    }
+
+    private companion object {
+        const val SEARCH_DEBOUNCE_MS = 400L
     }
 }

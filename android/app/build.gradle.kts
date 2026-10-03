@@ -15,8 +15,8 @@ android {
         applicationId = "com.rutger.soundboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3+$gitDescribe"
+        versionCode = 5
+        versionName = "1.4+$gitDescribe"
     }
 
     buildTypes {

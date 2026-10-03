@@ -220,7 +220,7 @@ fun MyInstantsBrowser(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = "MyInstants → slot ${slot + 1}",
+                        text = "MyInstants → slot ${buttonLabel(slot)}",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                     )
@@ -259,7 +259,7 @@ fun MyInstantsBrowser(
                                         viewModel.assignFromMyInstants(slot, sound) { ok ->
                                             Toast.makeText(
                                                 context,
-                                                if (ok) "Added \"${sound.title}\" to slot ${slot + 1}"
+                                                if (ok) "Added \"${sound.title}\" to slot ${buttonLabel(slot)}"
                                                 else "Download failed",
                                                 Toast.LENGTH_SHORT,
                                             ).show()

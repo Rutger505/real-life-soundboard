@@ -1,16 +1,23 @@
 package com.rutger.soundboard
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
-import android.text.Html
 import android.util.Log
+import android.webkit.WebSettings
+import android.webkit.WebView
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import kotlin.coroutines.resume
 
 data class MyInstantSound(
     val id: String,
@@ -24,61 +31,83 @@ data class MyInstantSound(
  * the selected sound's mp3 into the app's own files dir, so it becomes a
  * first-class local sound the soundboard can preload like a user-picked file.
  *
- * Port of the parser in https://github.com/abdipr/myinstants-api; its hosted
- * instance went offline, so the app no longer depends on it.
+ * Same selectors as https://github.com/abdipr/myinstants-api, whose hosted
+ * instance went offline.
  */
 object MyInstants {
 
     private const val SITE = "https://www.myinstants.com"
     private const val TIMEOUT_MS = 15_000
-    private const val USER_AGENT =
-        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
+    private const val PAGE_TIMEOUT_MS = 25_000L
+    private const val POLL_MS = 300L
 
-    private val playRegex = Regex("""play\('([^']+)'""")
-    private val linkRegex =
-        Regex("""<a\s+href="(/[a-z]{2}/instant/[^"]+)"[^>]*class="instant-link[^"]*"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+    // Returns null until the real page has rendered: before navigation, while
+    // Cloudflare's "Just a moment..." challenge runs, and during loading.
+    private val EXTRACT_JS = """
+        (function() {
+          if (location.hostname.indexOf('myinstants.com') < 0) return null;
+          if (document.title.indexOf('Just a moment') >= 0) return null;
+          if (document.readyState !== 'complete') return null;
+          return Array.from(document.querySelectorAll('div.instant')).map(function(d) {
+            var a = d.querySelector('a.instant-link');
+            var b = d.querySelector('button.small-button');
+            var m = b && /play\('([^']+)'/.exec(b.getAttribute('onclick') || '');
+            return a && m ? { href: a.getAttribute('href'), title: a.textContent.trim(), mp3: m[1] } : null;
+          }).filter(Boolean);
+        })()
+    """.trimIndent()
 
     /** Popular sounds to show when the search box is empty. `region` e.g. "us". */
-    suspend fun trending(region: String = "us"): List<MyInstantSound> =
-        fetch("$SITE/en/index/${enc(region)}/")
+    suspend fun trending(context: Context, region: String = "us"): List<MyInstantSound> =
+        scrape(context, "$SITE/en/index/${enc(region)}/")
 
-    suspend fun search(query: String): List<MyInstantSound> =
-        fetch("$SITE/en/search/?name=${enc(query)}")
+    suspend fun search(context: Context, query: String): List<MyInstantSound> =
+        scrape(context, "$SITE/en/search/?name=${enc(query)}")
 
-    private suspend fun fetch(url: String): List<MyInstantSound> =
-        withContext(Dispatchers.IO) {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = TIMEOUT_MS
-                readTimeout = TIMEOUT_MS
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", USER_AGENT)
+    // Cloudflare answers plain HTTP clients with a JS challenge (403), so the
+    // pages are loaded in a real browser engine that passes it on its own.
+    @SuppressLint("SetJavaScriptEnabled")
+    private suspend fun scrape(context: Context, url: String): List<MyInstantSound> =
+        withContext(Dispatchers.Main) {
+            val webView = WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                loadUrl(url)
             }
             try {
-                if (conn.responseCode !in 200..299) {
-                    Log.w("MyInstants", "HTTP ${conn.responseCode} for $url")
-                    return@withContext emptyList()
+                withTimeoutOrNull(PAGE_TIMEOUT_MS) {
+                    var sounds: List<MyInstantSound>? = null
+                    while (sounds == null) {
+                        delay(POLL_MS)
+                        sounds = parseSounds(webView.evaluate(EXTRACT_JS))
+                    }
+                    sounds
+                } ?: run {
+                    Log.w("MyInstants", "Timed out loading $url")
+                    emptyList()
                 }
-                parseSounds(conn.inputStream.bufferedReader().use { it.readText() })
-            } catch (e: Exception) {
-                Log.w("MyInstants", "Fetch failed for $url", e)
-                emptyList()
             } finally {
-                conn.disconnect()
+                webView.destroy()
             }
         }
 
-    private fun parseSounds(html: String): List<MyInstantSound> =
-        html.split("""<div class="instant">""").drop(1).mapNotNull { block ->
-            val mp3Path = playRegex.find(block)?.groupValues?.get(1) ?: return@mapNotNull null
-            val link = linkRegex.find(block) ?: return@mapNotNull null
-            val href = link.groupValues[1]
+    private suspend fun WebView.evaluate(js: String): String =
+        suspendCancellableCoroutine { cont -> evaluateJavascript(js) { cont.resume(it) } }
+
+    private fun parseSounds(json: String): List<MyInstantSound>? {
+        if (json == "null") return null
+        val items = JSONArray(json)
+        return List(items.length()) { i ->
+            val item = items.getJSONObject(i)
+            val href = item.getString("href")
             MyInstantSound(
                 id = href.trimEnd('/').substringAfterLast('/'),
-                title = Html.fromHtml(link.groupValues[2], Html.FROM_HTML_MODE_LEGACY).toString().trim(),
+                title = item.getString("title"),
                 url = SITE + href,
-                mp3 = SITE + mp3Path,
+                mp3 = SITE + item.getString("mp3"),
             )
         }
+    }
 
     /**
      * Download [sound]'s mp3 into app storage and return a content Uri that the
@@ -99,7 +128,7 @@ object MyInstants {
                 readTimeout = TIMEOUT_MS
                 requestMethod = "GET"
                 instanceFollowRedirects = true
-                setRequestProperty("User-Agent", USER_AGENT)
+                setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(context))
             }
             try {
                 if (conn.responseCode !in 200..299) return@withContext null
