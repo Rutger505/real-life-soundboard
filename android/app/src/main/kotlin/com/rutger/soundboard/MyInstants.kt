@@ -72,6 +72,9 @@ object MyInstants {
             val webView = WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                // Never attached to a window, so give it a phone-sized viewport:
+                // a 0x0 window is a bot signal for the challenge.
+                layout(0, 0, 1080, 2340)
                 loadUrl(url)
             }
             try {
