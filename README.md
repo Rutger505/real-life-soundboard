@@ -186,15 +186,45 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 
 ### Battery level in the app
 
-The firmware side is done (see [Battery level](#battery-level)).
+The firmware side is done (firmware 0.3.0, see [Battery level](#battery-level)
+and [BLE UUIDs](#ble-uuids)). The app does not use it yet.
+
+**BLE (`BleManager.kt`)**
+
+- After service discovery, also subscribe to Battery Level (`0x2A19` in service
+  `0x180F`) and to Battery (raw) (`…789abd` in the soundboard service), and
+  read both once. The firmware only notifies when the percentage changes, so
+  without the initial read the app shows nothing until the battery drops 1 %.
+- Android allows one GATT operation at a time: the CCCD writes and reads must
+  be queued, each started from the previous one's callback. Subscribe to the
+  button characteristic first, so presses work even if the battery part fails.
+- Older firmware has no battery characteristics. Treat them as optional and
+  hide the battery UI when they are missing.
+- Battery (raw) is 3 bytes: cell mV as a little-endian `u16`, then the
+  charging state. The state is always 0 (unknown) for now, because TP4056
+  `CHRG` is not wired.
+
+**UI**
 
 - Battery percentage in the foreground notification and under the button grid.
   Warn below 15 %.
-- Battery life estimate: keep timestamped samples since the last charge, and
-  reset when charging ends. Battery capacity (mAh) is a setting.
-  - average current (mA) = Δ% × capacity / Δt
-  - time remaining = remaining % × capacity / average current
-- An info icon opens a modal with the nerd stats:
+- An info icon opens a modal with the nerd stats (below).
+
+**Battery life estimate**
+
+- Keep timestamped samples (time, %, mV) since the last charge. Persist them
+  (DataStore or a small file), so they survive the app and the service
+  restarting. Battery capacity (mAh) is a setting.
+- The firmware can't report charging yet, so detect a charge in the app: the
+  percentage jumps up by 10 points or more between two samples (normal noise
+  is a few %). Then start a new set of samples.
+- average current (mA) = Δ% × capacity / Δt
+- time remaining = remaining % × capacity / average current
+- Show "not enough data" until the samples span at least a few % and an hour;
+  the reading is noisy (±5-10 %), so early estimates are meaningless.
+
+**Nerd stats modal**
+
   - voltage, percentage, charging state
   - configured capacity (mAh)
   - mAh used since the last charge
@@ -202,6 +232,8 @@ The firmware side is done (see [Battery level](#battery-level)).
   - estimated time remaining and estimated time when the battery is empty
   - time since the last charge, number of samples, last measurement
   - button presses since the last charge
+
+Bump the app version and upload the debug APK, as usual.
 
 ## Versioning
 
