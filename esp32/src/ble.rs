@@ -1,8 +1,10 @@
 //! BLE GATT soundboard server (trouble-host on esp-radio).
 //!
-//! One service with one notify characteristic. The phone subscribes and we
-//! send a single byte per press: the button index. The `#[gatt_service]`
-//! macro adds the CCCD (0x2902) for the notify property.
+//! The soundboard service sends one byte per press: the button index. The
+//! standard Battery Service (0x180F) carries the charge percentage, and a
+//! custom characteristic next to the button one carries the raw cell voltage
+//! for the app's stats. The `#[gatt_service]` macro adds the CCCD (0x2902)
+//! for each notify property.
 //!
 //! The link is tuned for low radio time: slow advertising, and once connected
 //! we ask the phone for a slow interval plus slave latency so the radio can
@@ -11,16 +13,19 @@
 use bt_hci::cmd::le::{LeConnUpdate, LeReadLocalSupportedFeatures};
 use bt_hci::controller::{ControllerCmdAsync, ControllerCmdSync, ExternalController};
 use embassy_futures::join::join;
-use embassy_futures::select::select3;
-use embassy_time::{Duration, Timer};
+use embassy_futures::select::{select, select3, Either};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::peripherals::BT;
 use esp_radio::ble::controller::BleConnector;
 use trouble_host::prelude::*;
 
+use crate::battery::{Battery, Reading};
+
 const DEVICE_NAME: &str = "Soundboard";
 
 // Service:        12345678-1234-1234-1234-123456789012
-// Characteristic: 12345678-1234-1234-1234-123456789abc
+// Button:         12345678-1234-1234-1234-123456789abc
+// Battery (raw):  12345678-1234-1234-1234-123456789abd
 // The gatt macro needs UUID string literals, so they are inlined below.
 
 /// Service UUID as little-endian bytes for the advertising payload.
@@ -42,9 +47,13 @@ const CONN_INTERVAL_MAX: Duration = Duration::from_millis(45);
 const CONN_LATENCY: u16 = 20;
 const CONN_TIMEOUT: Duration = Duration::from_millis(4000);
 
+/// Battery check when nobody presses anything. Presses measure too.
+const BATTERY_PERIOD: Duration = Duration::from_secs(30 * 60);
+
 #[gatt_server]
 struct Server {
     soundboard: SoundboardService,
+    battery: BatteryService,
 }
 
 #[gatt_service(uuid = "12345678-1234-1234-1234-123456789012")]
@@ -52,10 +61,21 @@ struct SoundboardService {
     /// Pressed button index (0..=8). Notify-only; the phone enables it via CCCD.
     #[characteristic(uuid = "12345678-1234-1234-1234-123456789abc", read, notify, value = 0u8)]
     button: u8,
+    /// Cell voltage in mV (u16, little-endian), then the charging state
+    /// (0 = unknown). Notifies together with the battery level.
+    #[characteristic(uuid = "12345678-1234-1234-1234-123456789abd", read, notify, value = [0u8; 3])]
+    battery_raw: [u8; 3],
+}
+
+#[gatt_service(uuid = service::BATTERY)]
+struct BatteryService {
+    /// Charge, 0-100 %.
+    #[characteristic(uuid = characteristic::BATTERY_LEVEL, read, notify, value = 0u8)]
+    level: u8,
 }
 
 /// Own the radio and run the BLE stack forever.
-pub async fn run(bt: BT<'static>) {
+pub async fn run(bt: BT<'static>, mut battery: Battery) {
     let connector = BleConnector::new(bt, Default::default()).unwrap();
     let controller: ExternalController<_, HCI_CMD_SLOTS> = ExternalController::new(connector);
 
@@ -84,7 +104,7 @@ pub async fn run(bt: BT<'static>) {
                     // Connected-only tasks. Any one returning (usually a
                     // disconnect) drops us back to advertising.
                     let gatt = gatt_events_task(&conn);
-                    let notify = notify_task(&server, &conn);
+                    let notify = notify_task(&server, &conn, &mut battery);
                     let params = conn_params_task(&conn, &stack);
                     select3(gatt, notify, params).await;
                 }
@@ -154,18 +174,62 @@ async fn advertise<'a, C: Controller>(
     Ok(conn)
 }
 
-/// Send button presses as one-byte notifications while connected.
-async fn notify_task<P: PacketPool>(server: &Server<'_>, conn: &GattConnection<'_, '_, P>) {
+/// Send button presses as one-byte notifications while connected, and keep
+/// the battery characteristics up to date.
+///
+/// The battery is measured on every press, before the notification goes out,
+/// because the cell sags while the radio transmits. Without presses it is
+/// measured every [`BATTERY_PERIOD`], and once right after connecting so the
+/// phone's first read is fresh.
+async fn notify_task<P: PacketPool>(
+    server: &Server<'_>,
+    conn: &GattConnection<'_, '_, P>,
+    battery: &mut Battery,
+) {
     let button = server.soundboard.button;
+    let mut last_percent = None;
+    let mut next_sample = Instant::now();
     loop {
-        let index = crate::BUTTON_EVENTS.receive().await;
-        // `store = true` also updates the readable value. Fails only if the
-        // link is gone, which the gatt task notices too.
-        if button.notify(conn, &index, true).await.is_err() {
-            log::warn!("[ble] notify failed (link down?)");
+        let reading = match select(crate::BUTTON_EVENTS.receive(), Timer::at(next_sample)).await {
+            Either::First(index) => {
+                let reading = battery.measure();
+                // `store = true` also updates the readable value. Fails only if
+                // the link is gone, which the gatt task notices too.
+                if button.notify(conn, &index, true).await.is_err() {
+                    log::warn!("[ble] notify failed (link down?)");
+                    break;
+                }
+                reading
+            }
+            Either::Second(()) => battery.measure(),
+        };
+        next_sample = Instant::now() + BATTERY_PERIOD;
+
+        if publish_battery(server, conn, reading, &mut last_percent).await.is_err() {
+            log::warn!("[ble] battery notify failed (link down?)");
             break;
         }
     }
+}
+
+/// Store the reading for reads; notify only when the percentage changed.
+/// Notifications are skipped by the stack until the phone subscribes.
+async fn publish_battery<P: PacketPool>(
+    server: &Server<'_>,
+    conn: &GattConnection<'_, '_, P>,
+    reading: Reading,
+    last_percent: &mut Option<u8>,
+) -> Result<(), Error> {
+    let level = server.battery.level;
+    let raw = server.soundboard.battery_raw;
+    if *last_percent == Some(reading.percent) {
+        server.set(&level, &reading.percent)?;
+        server.set(&raw, &reading.to_bytes())?;
+        return Ok(());
+    }
+    *last_percent = Some(reading.percent);
+    level.notify(conn, &reading.percent, true).await?;
+    raw.notify(conn, &reading.to_bytes(), true).await
 }
 
 /// Keep the ATT server responsive and detect disconnect. Nothing writable here.

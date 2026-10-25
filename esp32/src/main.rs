@@ -2,6 +2,7 @@
 //!
 //! A 3x3 button matrix + a status LED. A press flashes the LED and sends the
 //! button index (0..=8) as a one-byte BLE notification to the paired phone.
+//! The battery level is measured on GPIO34 and served over BLE too.
 //!
 //! Runs on esp-hal with the Embassy executor (esp-rtos), the esp-radio BLE
 //! controller and the trouble-host GATT stack. The matrix task sleeps on the
@@ -11,6 +12,7 @@
 #![no_std]
 #![no_main]
 
+mod battery;
 mod ble;
 mod buttons;
 mod led;
@@ -60,13 +62,14 @@ async fn main(spawner: Spawner) {
     spawner.spawn(led::led_task(led).unwrap());
 
     // Button matrix, 6 wires for 9 keys. The index notified to the phone is
-    // row * 3 + column. Rows sit side by side on one header of a 30- or
-    // 38-pin dev board and columns on the other, and none of the six is a
-    // strapping or flash pin.
+    // row * 3 + column. Rows sit on one header of a 30- or 38-pin dev board
+    // and columns on the other, and none of the six is a strapping or flash
+    // pin. GPIO26/27 are skipped: the board has a fault between them.
+    // GPIO32/33 are kept free for a 32.768 kHz crystal.
     let row_cfg = InputConfig::default().with_pull(Pull::Up);
     let rows = [
         Input::new(peripherals.GPIO25, row_cfg),
-        Input::new(peripherals.GPIO32, row_cfg),
+        Input::new(peripherals.GPIO14, row_cfg),
         Input::new(peripherals.GPIO13, row_cfg),
     ];
     let col_cfg = OutputConfig::default().with_drive_mode(DriveMode::OpenDrain);
@@ -77,6 +80,9 @@ async fn main(spawner: Spawner) {
     ];
     spawner.spawn(buttons::matrix_task(rows, cols).unwrap());
 
+    // Cell voltage through a 100k/100k divider (after the power switch).
+    let battery = battery::Battery::new(peripherals.ADC1, peripherals.GPIO34);
+
     // Owns the radio and never returns.
-    ble::run(peripherals.BT).await;
+    ble::run(peripherals.BT, battery).await;
 }

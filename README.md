@@ -14,22 +14,27 @@ The Android app runs a **foreground service**, so the BLE connection and audio p
 - 9 momentary push buttons, wired as a 3x3 matrix
 - 1 LED (status indicator) and a 220-330 ohm resistor in series with it
 - Optional: 9x 1N4148 diodes, one per button (see below)
+- 2x 100k resistors for the battery voltage divider (see [Battery level](#battery-level))
 
 ### Pins
 
-The matrix needs 6 GPIOs for 9 buttons. The three rows sit next to each other
-on one header and the three columns on the other, on both the 30-pin DevKit V1
-and the 38-pin DevKitC. None of them is a strapping pin or a flash pin.
+The matrix needs 6 GPIOs for 9 buttons. The three rows are on one header and
+the three columns on the other, on both the 30-pin DevKit V1 and the 38-pin
+DevKitC. None of them is a strapping pin or a flash pin.
+
+GPIO26 and GPIO27 are skipped: the current board has a fault between them.
+GPIO32 and GPIO33 are kept free for an optional 32.768 kHz crystal.
 
 | Signal   | GPIO | Firmware setup                  |
 |----------|------|---------------------------------|
 | Row 0    | 25   | input, internal pull-up         |
-| Row 1    | 26   | input, internal pull-up         |
-| Row 2    | 27   | input, internal pull-up         |
+| Row 1    | 14   | input, internal pull-up         |
+| Row 2    | 13   | input, internal pull-up         |
 | Column 0 | 17   | open-drain output               |
 | Column 1 | 16   | open-drain output               |
 | Column 2 | 4    | open-drain output               |
 | LED+     | 18   | push-pull output, through the resistor |
+| Battery  | 34   | ADC1, 11 dB, divider midpoint   |
 
 The LED is not on GPIO2 because most dev boards already have their own LED on
 that pin. GPIO18 is on the same header as the columns, two pins past GPIO17
@@ -51,8 +56,8 @@ towards you, row 0 is the one furthest away and column 0 is on the left:
 |            | Column 0 (GPIO17) | Column 1 (GPIO16) | Column 2 (GPIO4) |
 |------------|-------------------|-------------------|------------------|
 | Row 0 (GPIO25) | button 1 (index 0) | button 2 (index 1) | button 3 (index 2) |
-| Row 1 (GPIO26) | button 4 (index 3) | button 5 (index 4) | button 6 (index 5) |
-| Row 2 (GPIO27) | button 7 (index 6) | button 8 (index 7) | button 9 (index 8) |
+| Row 1 (GPIO14) | button 4 (index 3) | button 5 (index 4) | button 6 (index 5) |
+| Row 2 (GPIO13) | button 7 (index 6) | button 8 (index 7) | button 9 (index 8) |
 
 No resistors are needed. While nobody presses anything, all columns are pulled
 low and the firmware sleeps until a row goes low. It then scans one column at a
@@ -67,12 +72,48 @@ each button, anode on the row side and cathode (the band) on the column side.
 
 ## BLE UUIDs
 
-| Role           | UUID                                   |
-|----------------|----------------------------------------|
-| Service        | `12345678-1234-1234-1234-123456789012` |
-| Characteristic | `12345678-1234-1234-1234-123456789abc` |
+| Role                  | UUID                                   |
+|-----------------------|----------------------------------------|
+| Soundboard service    | `12345678-1234-1234-1234-123456789012` |
+| Button                | `12345678-1234-1234-1234-123456789abc` |
+| Battery (raw)         | `12345678-1234-1234-1234-123456789abd` |
+| Battery Service       | `0x180F` (standard)                    |
+| Battery Level         | `0x2A19` (standard)                    |
 
-The characteristic is notify-only. When a button is pressed the ESP32 sends a 1-byte notification with the button index (0–8).
+- **Button** (read, notify): when a button is pressed the ESP32 sends a 1-byte
+  notification with the button index (0–8).
+- **Battery Level** (read, notify): 1 byte, 0–100 %.
+- **Battery (raw)** (read, notify): 3 bytes. Cell voltage in mV as a
+  little-endian `u16`, then the charging state (0 = unknown; `CHRG` is not
+  wired yet).
+
+## Battery level
+
+The ESP32 runs from the buck-boost's steady 3.3 V, so it never sees the battery
+voltage. A voltage divider makes it visible.
+
+**Hardware**
+
+- Voltage divider, 2x 100k, from the power switch's output (so it draws
+  nothing when off) to GND. The midpoint goes to **GPIO34**: an ADC1 pin, so it
+  doesn't clash with the radio the way ADC2 does, and input-only. At 4.2 V the
+  pin sees 2.1 V. The divider draws about 20 µA.
+- Optional: TP4056 `CHRG` (open-drain, active-low while charging) to a free GPIO
+  with an internal pull-up. While charging, the voltage reads high, so the app
+  could show "charging" instead of a percentage. Not used by the firmware yet.
+
+**Firmware** (`esp32/src/battery.rs`)
+
+- Measured on every button press, before the press is sent, because the
+  voltage sags while the radio transmits. Also every 30 min, and once right
+  after a phone connects.
+- 32 ADC samples are averaged. esp-hal has no ADC calibration for the classic
+  ESP32, so the firmware uses ESP-IDF's line fit for 11 dB with the chip's
+  eFuse Vref. Expect ±5-10 %.
+- Voltage to percent through a resting LiPo curve (4.2 V = 100 %, 3.8 V = 55 %,
+  3.7 V = 35 %, 3.3 V = 0 %).
+- Both battery characteristics only notify when the percentage changes. Reads
+  always return the latest measurement.
 
 ## ESP32 firmware
 
@@ -143,36 +184,9 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 
 ## TODO
 
-### Battery level
+### Battery level in the app
 
-The ESP32 runs from the buck-boost's steady 3.3 V, so it never sees the battery
-voltage. This can't be done in software alone; it needs a small hardware mod.
-
-**Hardware**
-
-- Voltage divider, 2x 100k, from TP4056 `OUT+` (after the switch, so it draws
-  nothing when off) to GND. The midpoint goes to **GPIO34**: an ADC1 pin, so it
-  doesn't clash with the radio the way ADC2 does, and input-only. At 4.2 V the
-  pin sees 2.1 V. The divider draws about 20 µA.
-- Optional: TP4056 `CHRG` (open-drain, active-low while charging) to a free GPIO
-  with an internal pull-up. While charging, the voltage reads high, so the app
-  shows "charging" instead of a percentage.
-
-**Firmware**
-
-- Standard Battery Service `0x180F`, Battery Level `0x2A19` (1 byte, 0-100 %,
-  read + notify), next to the soundboard service. The button notification stays
-  unchanged.
-- Measure on every button press, before sending, because the voltage sags while
-  the radio transmits. Also measure every ~30 min, so the level still updates
-  when nobody presses anything.
-- Only notify when the percentage has changed.
-- Voltage to percent through a LiPo lookup table (4.2 V = 100 %, ~3.7 V ≈ 40-50 %,
-  3.3 V = 0 %). Expect ±5-10 %, because the classic ESP32 ADC is not precise.
-- Also expose the raw voltage (mV, `u16`) and the charging state in a custom
-  characteristic, for the stats below.
-
-**App**
+The firmware side is done (see [Battery level](#battery-level)).
 
 - Battery percentage in the foreground notification and under the button grid.
   Warn below 15 %.
