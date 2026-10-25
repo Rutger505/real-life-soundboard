@@ -1,6 +1,7 @@
 package com.rutger.soundboard
 
 import android.net.Uri
+import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -8,6 +9,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -17,12 +20,18 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +43,9 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
     val sounds by viewModel.sounds.collectAsState()
     val bleConnected by viewModel.bleConnected.collectAsState()
     val activeButton by viewModel.activeButton.collectAsState()
+    val battery by viewModel.battery.collectAsState()
+
+    var showBatteryStats by remember { mutableStateOf(false) }
 
     // Which slot (if any) is picking a sound from MyInstants.
     var browserSlot by remember { mutableStateOf<Int?>(null) }
@@ -69,8 +81,15 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Hidden on firmware without battery characteristics.
+        battery?.let { BatteryRow(it, onInfo = { showBatteryStats = true }) }
+
         // Connection status sits just under the centered grid.
         BleStatusBar(connected = bleConnected)
+    }
+
+    if (showBatteryStats) {
+        BatteryStatsDialog(viewModel = viewModel, onDismiss = { showBatteryStats = false })
     }
 
     browserSlot?.let { slot ->
@@ -82,6 +101,144 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
                 viewModel.clearMyInstantsResults()
             },
         )
+    }
+}
+
+@Composable
+private fun BatteryRow(reading: BatteryReading, onInfo: () -> Unit) {
+    val low = reading.percent < LOW_BATTERY_PERCENT
+    val color = if (low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = buildString {
+                append("Battery ${reading.percent}%")
+                reading.millivolts?.let { append(" · %.2f V".format(it / 1000.0)) }
+                if (low) append(" · low, charge soon")
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        IconButton(onClick = onInfo) {
+            Icon(Icons.Outlined.Info, contentDescription = "Battery stats")
+        }
+    }
+}
+
+/** Nerd stats about the soundboard's battery, plus the capacity setting. */
+@Composable
+private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val reading by viewModel.battery.collectAsState()
+    val session by viewModel.batterySession.collectAsState()
+    val capacity by viewModel.batteryCapacity.collectAsState()
+    val stats = remember(session, capacity) { computeBatteryStats(session, capacity) }
+    var capacityText by remember(capacity) { mutableStateOf(capacity?.toString() ?: "") }
+
+    // Durations relative to now, so tick while the dialog is open.
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000)
+            value = System.currentTimeMillis()
+        }
+    }
+
+    fun time(ms: Long) = DateUtils.formatDateTime(
+        context, ms,
+        DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL,
+    )
+    val noData = "not enough data"
+    val noCapacity = "set capacity"
+    val last = session.samples.lastOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        title = { Text("Battery") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
+                StatLine("Voltage", reading?.millivolts?.let { "%.3f V".format(it / 1000.0) } ?: "—")
+                StatLine("Percentage", reading?.let { "${it.percent}%" } ?: "—")
+                StatLine("Charging", reading?.let { chargingLabel(it.charging) } ?: "—")
+                StatLine("Capacity", capacity?.let { "$it mAh" } ?: "not set")
+                StatLine(
+                    "Used since charge",
+                    if (capacity == null) noCapacity
+                    else stats.mahUsed?.let { "${it.roundToInt()} mAh" } ?: noData,
+                )
+                StatLine(
+                    "Average draw",
+                    if (capacity == null) noCapacity
+                    else stats.averageMa?.let { "%.1f mA".format(it) } ?: noData,
+                )
+                StatLine("Drain", stats.drainPercentPerHour?.let { "%.2f %%/h".format(it) } ?: noData)
+                StatLine(
+                    "Time remaining",
+                    stats.emptyAtMs?.let { formatDuration((it - now).coerceAtLeast(0)) } ?: noData,
+                )
+                StatLine("Empty at", stats.emptyAtMs?.let { time(it) } ?: noData)
+                StatLine("Since charge", session.startMs?.let { formatDuration(now - it) } ?: "—")
+                StatLine("Samples", "${session.samples.size}")
+                StatLine("Last measurement", last?.let { time(it.timeMs) } ?: "—")
+                StatLine("Presses since charge", "${session.presses}")
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "A charge is detected when the level jumps up 10 points or more. " +
+                        "Readings are ±5-10 %, so the estimate needs an hour and a few % of data.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = capacityText,
+                        onValueChange = { text -> capacityText = text.filter { it.isDigit() }.take(6) },
+                        label = { Text("Capacity (mAh)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { viewModel.setBatteryCapacity(capacityText.toIntOrNull()) },
+                        enabled = capacityText != (capacity?.toString() ?: ""),
+                    ) { Text("Save") }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun StatLine(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** "2 d 4 h", "3 h 20 min", "12 min". */
+private fun formatDuration(ms: Long): String {
+    val minutes = ms / 60_000
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        days > 0 -> "$days d ${hours % 24} h"
+        hours > 0 -> "$hours h ${minutes % 60} min"
+        else -> "$minutes min"
     }
 }
 

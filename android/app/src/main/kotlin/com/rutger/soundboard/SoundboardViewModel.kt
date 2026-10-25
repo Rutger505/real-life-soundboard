@@ -37,6 +37,22 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
     // Connection + playback state come straight from the service.
     val bleConnected: StateFlow<Boolean> = SoundboardState.bleConnected.asStateFlow()
     val activeButton: StateFlow<Int?> = SoundboardState.activeButton.asStateFlow()
+    val battery: StateFlow<BatteryReading?> = SoundboardState.battery.asStateFlow()
+    val batterySession: StateFlow<BatterySession> = SoundboardState.batterySession.asStateFlow()
+
+    private val _batteryCapacity = MutableStateFlow(
+        prefs.getInt(PREF_BATTERY_CAPACITY, 0).takeIf { it > 0 },
+    )
+    val batteryCapacity: StateFlow<Int?> = _batteryCapacity.asStateFlow()
+
+    /** Set the battery capacity in mAh; null or <= 0 clears it. */
+    fun setBatteryCapacity(mah: Int?) {
+        val value = mah?.takeIf { it > 0 }
+        prefs.edit().apply {
+            if (value == null) remove(PREF_BATTERY_CAPACITY) else putInt(PREF_BATTERY_CAPACITY, value)
+        }.apply()
+        _batteryCapacity.value = value
+    }
 
     // ---- MyInstants browser state ----
     private val _miResults = MutableStateFlow<List<MyInstantSound>>(emptyList())

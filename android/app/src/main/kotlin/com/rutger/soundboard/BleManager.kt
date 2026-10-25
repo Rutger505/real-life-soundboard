@@ -20,6 +20,9 @@ private const val TAG = "BleManager"
 
 val SERVICE_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-123456789012")
 val CHAR_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-123456789abc")
+val BATTERY_RAW_UUID: UUID = UUID.fromString("12345678-1234-1234-1234-123456789abd")
+val BATTERY_SERVICE_UUID: UUID = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
+val BATTERY_LEVEL_UUID: UUID = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
 val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
 fun hasBlePermissions(context: Context): Boolean {
@@ -38,6 +41,10 @@ class BleManager(
     private val context: Context,
     private val onButtonPressed: (Int) -> Unit,
     private val onConnectionStateChanged: (Boolean) -> Unit,
+    /** Battery Level, 0-100 %. Called on the main thread. */
+    private val onBatteryLevel: (Int) -> Unit,
+    /** Battery (raw): cell mV and charging state. Called on the main thread. */
+    private val onBatteryRaw: (millivolts: Int, charging: Int) -> Unit,
 ) {
     private companion object {
         const val FIRST_RECONNECT_DELAY_MS = 5_000L
@@ -55,6 +62,17 @@ class BleManager(
     // stays away we back off and keep scanning at a low-power cadence so we
     // don't drain the battery hunting for a device that's simply switched off.
     private var reconnectAttempts = 0
+
+    // Android runs one GATT operation at a time, so subscriptions and reads
+    // are queued and each one starts from the previous one's callback. Only
+    // touched on the main thread (callbacks are posted to [handler]).
+    private sealed interface GattOp {
+        val characteristic: BluetoothGattCharacteristic
+        data class Subscribe(override val characteristic: BluetoothGattCharacteristic) : GattOp
+        data class Read(override val characteristic: BluetoothGattCharacteristic) : GattOp
+    }
+    private val gattOps = ArrayDeque<GattOp>()
+    private var gattOpInFlight: GattOp? = null
 
     // Turning Bluetooth off silently kills our scan and link, and turning it
     // back on tells us nothing, so without this we would wait forever.
@@ -93,73 +111,70 @@ class BleManager(
         }
     }
 
+    // GATT callbacks arrive on a binder thread; everything is handed to the
+    // main thread so the op queue and the callbacks above stay single-threaded.
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    Log.i(TAG, "Connected to GATT server")
-                    gatt.discoverServices()
-                }
-                BluetoothProfile.STATE_DISCONNECTED -> {
-                    Log.i(TAG, "Disconnected from GATT server (status $status)")
-                    gatt.close()
-                    if (gatt == bluetoothGatt) bluetoothGatt = null
-                    onConnectionStateChanged(false)
-                    scheduleReconnect()
+            handler.post {
+                when (newState) {
+                    BluetoothProfile.STATE_CONNECTED -> {
+                        Log.i(TAG, "Connected to GATT server")
+                        gatt.discoverServices()
+                    }
+                    BluetoothProfile.STATE_DISCONNECTED -> {
+                        Log.i(TAG, "Disconnected from GATT server (status $status)")
+                        gatt.close()
+                        if (gatt == bluetoothGatt) {
+                            bluetoothGatt = null
+                            clearGattOps()
+                        }
+                        onConnectionStateChanged(false)
+                        scheduleReconnect()
+                    }
                 }
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                Log.e(TAG, "Service discovery failed: $status")
-                gatt.disconnect()
-                return
-            }
-            val characteristic = gatt
-                .getService(SERVICE_UUID)
-                ?.getCharacteristic(CHAR_UUID)
-            val descriptor = characteristic?.getDescriptor(CCCD_UUID)
-            if (characteristic == null || descriptor == null ||
-                !gatt.setCharacteristicNotification(characteristic, true) ||
-                !enableNotifications(gatt, descriptor)
-            ) {
-                Log.e(TAG, "Could not subscribe to button notifications")
-                gatt.disconnect()
-            }
+            handler.post { onServicesReady(gatt, status) }
         }
 
-        // Only now is the link useful, so only now do we report "connected".
         override fun onDescriptorWrite(
             gatt: BluetoothGatt,
             descriptor: BluetoothGattDescriptor,
             status: Int,
         ) {
             if (descriptor.uuid != CCCD_UUID) return
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.i(TAG, "Subscribed to notifications")
-                reconnectAttempts = 0
-                onConnectionStateChanged(true)
-            } else {
-                Log.e(TAG, "Subscribing failed: $status")
-                gatt.disconnect()
-            }
+            handler.post { onSubscribeDone(gatt, descriptor.characteristic, status) }
         }
 
-        // Android 12 and older only call this deprecated variant.
+        // Android 12 and older only call the deprecated variants below.
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int,
+        ) {
+            val value = characteristic.value?.copyOf()
+            handler.post { onReadDone(gatt, characteristic, value, status) }
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int,
+        ) {
+            handler.post { onReadDone(gatt, characteristic, value, status) }
+        }
+
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
         ) {
-            if (characteristic.uuid == CHAR_UUID) {
-                val value = characteristic.value
-                if (value != null && value.isNotEmpty()) {
-                    val index = value[0].toInt() and 0xFF
-                    Log.d(TAG, "BLE notification: button $index")
-                    onButtonPressed(index)
-                }
-            }
+            val value = characteristic.value?.copyOf() ?: return
+            handler.post { onValue(characteristic.uuid, value) }
         }
 
         override fun onCharacteristicChanged(
@@ -167,12 +182,125 @@ class BleManager(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            if (characteristic.uuid == CHAR_UUID && value.isNotEmpty()) {
+            handler.post { onValue(characteristic.uuid, value) }
+        }
+    }
+
+    private fun onServicesReady(gatt: BluetoothGatt, status: Int) {
+        if (gatt != bluetoothGatt) return
+        if (status != BluetoothGatt.GATT_SUCCESS) {
+            Log.e(TAG, "Service discovery failed: $status")
+            gatt.disconnect()
+            return
+        }
+        val button = gatt.getService(SERVICE_UUID)?.getCharacteristic(CHAR_UUID)
+        if (button == null) {
+            Log.e(TAG, "Button characteristic missing")
+            gatt.disconnect()
+            return
+        }
+        clearGattOps()
+        // Button first, so presses work even if the battery part fails.
+        gattOps += GattOp.Subscribe(button)
+        // Firmware before 0.3.0 has no battery characteristics; they're optional.
+        // The firmware only notifies on a change, so read each once as well.
+        val level = gatt.getService(BATTERY_SERVICE_UUID)?.getCharacteristic(BATTERY_LEVEL_UUID)
+        val raw = gatt.getService(SERVICE_UUID)?.getCharacteristic(BATTERY_RAW_UUID)
+        for (c in listOfNotNull(level, raw)) {
+            gattOps += GattOp.Subscribe(c)
+            gattOps += GattOp.Read(c)
+        }
+        if (level == null && raw == null) Log.i(TAG, "No battery characteristics (old firmware)")
+        runNextGattOp(gatt)
+    }
+
+    private fun runNextGattOp(gatt: BluetoothGatt) {
+        while (gattOpInFlight == null) {
+            val op = gattOps.removeFirstOrNull() ?: return
+            val started = when (op) {
+                is GattOp.Subscribe -> {
+                    val cccd = op.characteristic.getDescriptor(CCCD_UUID)
+                    cccd != null &&
+                        gatt.setCharacteristicNotification(op.characteristic, true) &&
+                        enableNotifications(gatt, cccd)
+                }
+                is GattOp.Read -> gatt.readCharacteristic(op.characteristic)
+            }
+            if (started) {
+                gattOpInFlight = op
+            } else if (!onGattOpFailed(gatt, op, "could not start")) {
+                return
+            }
+        }
+    }
+
+    /** Returns false when the link is being torn down and the queue must stop. */
+    private fun onGattOpFailed(gatt: BluetoothGatt, op: GattOp, reason: String): Boolean {
+        val uuid = op.characteristic.uuid
+        Log.e(TAG, "${op::class.simpleName} $uuid failed: $reason")
+        if (op is GattOp.Subscribe && uuid == CHAR_UUID) {
+            clearGattOps()
+            gatt.disconnect()
+            return false
+        }
+        return true
+    }
+
+    private fun onSubscribeDone(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+        if (gatt != bluetoothGatt) return
+        val op = gattOpInFlight
+        if (op !is GattOp.Subscribe || op.characteristic.uuid != characteristic.uuid) return
+        gattOpInFlight = null
+        if (status != BluetoothGatt.GATT_SUCCESS) {
+            if (!onGattOpFailed(gatt, op, "status $status")) return
+        } else if (characteristic.uuid == CHAR_UUID) {
+            // Only now is the link useful, so only now do we report "connected".
+            Log.i(TAG, "Subscribed to button notifications")
+            reconnectAttempts = 0
+            onConnectionStateChanged(true)
+        }
+        runNextGattOp(gatt)
+    }
+
+    private fun onReadDone(
+        gatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray?,
+        status: Int,
+    ) {
+        if (gatt != bluetoothGatt) return
+        val op = gattOpInFlight
+        if (op !is GattOp.Read || op.characteristic.uuid != characteristic.uuid) return
+        gattOpInFlight = null
+        if (status == BluetoothGatt.GATT_SUCCESS && value != null) {
+            onValue(characteristic.uuid, value)
+        } else {
+            onGattOpFailed(gatt, op, "status $status")
+        }
+        runNextGattOp(gatt)
+    }
+
+    private fun onValue(uuid: UUID, value: ByteArray) {
+        when (uuid) {
+            CHAR_UUID -> if (value.isNotEmpty()) {
                 val index = value[0].toInt() and 0xFF
                 Log.d(TAG, "BLE notification: button $index")
                 onButtonPressed(index)
             }
+            BATTERY_LEVEL_UUID -> if (value.isNotEmpty()) {
+                onBatteryLevel((value[0].toInt() and 0xFF).coerceIn(0, 100))
+            }
+            // Cell mV as a little-endian u16, then the charging state.
+            BATTERY_RAW_UUID -> if (value.size >= 3) {
+                val mv = (value[0].toInt() and 0xFF) or ((value[1].toInt() and 0xFF) shl 8)
+                onBatteryRaw(mv, value[2].toInt() and 0xFF)
+            }
         }
+    }
+
+    private fun clearGattOps() {
+        gattOps.clear()
+        gattOpInFlight = null
     }
 
     fun startScan() {
@@ -213,6 +341,7 @@ class BleManager(
 
     private fun connect(device: BluetoothDevice) {
         bluetoothGatt?.close()
+        clearGattOps()
         bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         Log.i(TAG, "Connecting to ${device.address}")
     }
@@ -233,6 +362,7 @@ class BleManager(
         stopScan()
         bluetoothGatt?.close()
         bluetoothGatt = null
+        clearGattOps()
         onConnectionStateChanged(false)
     }
 
@@ -253,5 +383,6 @@ class BleManager(
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
+        clearGattOps()
     }
 }

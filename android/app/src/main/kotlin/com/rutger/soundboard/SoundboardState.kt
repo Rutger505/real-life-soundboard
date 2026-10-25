@@ -17,4 +17,13 @@ object SoundboardState {
     val bleConnected = MutableStateFlow(false)
     val activeButton = MutableStateFlow<Int?>(null)
     val lastButton = MutableStateFlow<Int?>(null)
+
+    /** Latest battery values; null while disconnected or on firmware without battery support. */
+    val battery = MutableStateFlow<BatteryReading?>(null)
+
+    /** Samples and presses since the last charge, persisted by [BatteryHistory]. */
+    val batterySession = MutableStateFlow(BatterySession())
 }
+
+/** Battery capacity in mAh, a user setting. Null until configured. */
+const val PREF_BATTERY_CAPACITY = "battery_capacity_mah"

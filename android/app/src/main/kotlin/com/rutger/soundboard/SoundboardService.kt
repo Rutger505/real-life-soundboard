@@ -28,23 +28,46 @@ class SoundboardService : Service() {
     private lateinit var prefs: SharedPreferences
     private lateinit var audioPlayer: AudioPlayer
     private lateinit var bleManager: BleManager
+    private lateinit var batteryHistory: BatteryHistory
     private val handler = Handler(Looper.getMainLooper())
+
+    // Battery Level and Battery (raw) arrive as two separate notifications (or
+    // reads). Collect both, then record one combined sample.
+    private var batteryPercent: Int? = null
+    private var batteryMillivolts: Int? = null
+    private var batteryCharging = 0
+    private val commitBattery = Runnable { commitBatteryReading() }
 
     override fun onCreate() {
         super.onCreate()
         prefs = getSharedPreferences("soundboard_prefs", Context.MODE_PRIVATE)
         audioPlayer = AudioPlayer()
         reloadSlots()
+        batteryHistory = BatteryHistory(this)
+        SoundboardState.batterySession.value = batteryHistory.load()
 
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
 
         bleManager = BleManager(
             context = this,
-            onButtonPressed = { index -> onButtonPressed(index) },
+            onButtonPressed = { index ->
+                countPress()
+                onButtonPressed(index)
+            },
             onConnectionStateChanged = { connected ->
                 SoundboardState.bleConnected.value = connected
+                if (!connected) clearBattery()
                 updateNotification()
+            },
+            onBatteryLevel = { percent ->
+                batteryPercent = percent
+                scheduleBatteryCommit()
+            },
+            onBatteryRaw = { millivolts, charging ->
+                batteryMillivolts = millivolts
+                batteryCharging = charging
+                scheduleBatteryCommit()
             },
         )
         bleManager.startScan()
@@ -80,6 +103,41 @@ class SoundboardService : Service() {
         }, 300)
     }
 
+    /** Physical presses since the last charge, for the nerd stats. */
+    private fun countPress() {
+        updateSession(SoundboardState.batterySession.value.withPress())
+    }
+
+    private fun scheduleBatteryCommit() {
+        handler.removeCallbacks(commitBattery)
+        handler.postDelayed(commitBattery, BATTERY_COMMIT_DELAY_MS)
+    }
+
+    private fun commitBatteryReading() {
+        // Battery Level is the one that matters; without it there's no sample.
+        val percent = batteryPercent ?: return
+        SoundboardState.battery.value = BatteryReading(percent, batteryMillivolts, batteryCharging)
+        updateSession(
+            SoundboardState.batterySession.value.withSample(
+                BatterySample(System.currentTimeMillis(), percent, batteryMillivolts),
+            ),
+        )
+        updateNotification()
+    }
+
+    private fun updateSession(session: BatterySession) {
+        SoundboardState.batterySession.value = session
+        batteryHistory.save(session)
+    }
+
+    private fun clearBattery() {
+        handler.removeCallbacks(commitBattery)
+        batteryPercent = null
+        batteryMillivolts = null
+        batteryCharging = 0
+        SoundboardState.battery.value = null
+    }
+
     /** (Re)prepare the MediaPlayers for all configured slots from prefs. */
     private fun reloadSlots() {
         for (i in BUTTON_IDS) {
@@ -108,7 +166,12 @@ class SoundboardService : Service() {
         val connected = SoundboardState.bleConnected.value
         val last = SoundboardState.lastButton.value
 
+        val battery = SoundboardState.battery.value
+
         val status = if (connected) "ESP32 connected" else "Reconnecting…"
+        val batteryText = battery?.let {
+            " • Battery ${it.percent}%" + if (it.percent < LOW_BATTERY_PERCENT) " (low!)" else ""
+        } ?: ""
         val lastText = last?.let { " • Last: button ${buttonLabel(it)}" } ?: ""
 
         val openIntent = PendingIntent.getActivity(
@@ -120,7 +183,7 @@ class SoundboardService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Soundboard")
-            .setContentText(status + lastText)
+            .setContentText(status + batteryText + lastText)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .setContentIntent(openIntent)
@@ -148,6 +211,7 @@ class SoundboardService : Service() {
         const val ACTION_PLAY = "com.rutger.soundboard.action.PLAY"
         const val ACTION_RELOAD = "com.rutger.soundboard.action.RELOAD"
         const val EXTRA_INDEX = "index"
+        private const val BATTERY_COMMIT_DELAY_MS = 300L
 
         /** Start the service in the foreground (safe to call repeatedly). */
         fun start(context: Context) {
