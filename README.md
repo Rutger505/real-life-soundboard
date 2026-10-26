@@ -181,8 +181,13 @@ overlay. It moves the RTC and the BLE sleep clock to the crystal, and the firmwa
 enables automatic light sleep between connection events:
 
 ```bash
-ESP_IDF_SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.crystal" cargo build --release
+cd esp32
+ESP_IDF_SDKCONFIG_DEFAULTS="$PWD/sdkconfig.defaults;$PWD/sdkconfig.crystal" cargo build --release
 ```
+
+Use absolute paths: esp-idf-sys resolves relative ones against the parent of the target
+dir, so with a custom `CARGO_TARGET_DIR` they silently point nowhere. The resolved
+settings end up in `target/xtensa-esp32-espidf/release/build/esp-idf-sys-*/out/sdkconfig`.
 
 The boot log says `light sleep: on`. If the crystal does not start, ESP-IDF warns
 `32.768kHz XTAL not detected` and falls back to the main crystal, so the board still

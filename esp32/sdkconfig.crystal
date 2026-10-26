@@ -1,7 +1,10 @@
 # Overlay for boards WITH a 32.768 kHz crystal on GPIO32/33 (32K_XP/32K_XN),
 # on top of sdkconfig.defaults. Build with:
 #
-#   ESP_IDF_SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.crystal" cargo build --release
+#   ESP_IDF_SDKCONFIG_DEFAULTS="$PWD/sdkconfig.defaults;$PWD/sdkconfig.crystal" cargo build --release
+#
+# from esp32/. Absolute paths: relative ones resolve against the target dir's
+# parent and are silently skipped with a custom CARGO_TARGET_DIR.
 #
 # The crystal keeps the RTC and the BLE controller's sleep clock running in
 # light sleep, so src/power.rs turns automatic light sleep on (it keys off
