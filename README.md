@@ -205,6 +205,53 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 4. Tap the folder icon on each button slot to assign an audio file.
 5. Press a physical button — the LED blinks and the audio plays on the phone.
 
+## TODO
+
+### 32.768 kHz crystal and ESP-IDF light sleep
+
+A 32.768 kHz crystal on GPIO32/33 lets the BLE controller keep time while the
+chip light-sleeps between connection events. That needs ESP-IDF; the current
+bare-metal firmware (esp-radio) keeps BLE sleep disabled, so the crystal does
+nothing until the firmware moves back to Rust + ESP-IDF.
+
+**Hardware: current state**
+
+- [x] Battery divider: `OUT+ ─100k─┬─100k─ GND`, midpoint to GPIO34.
+- [x] Load capacitors, one from GPIO32 to GND and one from GPIO33 to GND.
+- [ ] Check the load capacitors' value. They were fitted as "10 nF", but a
+  32.768 kHz crystal needs about 10-22 pF. 10 nF (marked `103`) is 1000x too
+  much and stops the crystal from oscillating. 10 pF is marked `100`.
+- [ ] Solder the crystal between GPIO32 and GPIO33 (either way round). Keep the
+  leads as short as possible and clean the flux off afterwards.
+- [ ] Confirm row 1 moved from GPIO32 to GPIO14 (firmware 0.3.0 expects 14).
+- [ ] Confirm the divider's top wire is on the power switch output, not on
+  TP4056 `OUT+` before the switch. Before the switch it drains ~20 µA while off.
+
+Target wiring:
+
+```
+GPIO32 ──┬──[32.768 kHz]──┬── GPIO33
+         │                │
+      [10-22 pF]       [10-22 pF]
+         │                │
+        GND              GND
+```
+
+Keep GPIO26/27 unused (board fault between them).
+
+**Firmware**
+
+- [ ] Port the firmware back to Rust + ESP-IDF (esp-idf-svc). The version
+  before `cb83e08` is a starting point; its `sdkconfig.defaults` already has a
+  commented-out block for boards with a crystal.
+- [ ] Enable `CONFIG_RTC_CLK_SRC_EXT_CRYS`, `CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL`,
+  `CONFIG_BTDM_CTRL_MODEM_SLEEP`, `CONFIG_PM_ENABLE` and
+  `CONFIG_FREERTOS_USE_TICKLESS_IDLE`, and light sleep in `esp_pm_configure`.
+- [ ] Keep the current matrix pins, LED and the BLE UUIDs (button + battery),
+  so the app works with either firmware.
+- [ ] Use ESP-IDF's ADC calibration for the battery reading.
+- [ ] Measure the battery drain before and after, to see what it gains.
+
 ## Versioning
 
 Bump the version with every change you ship:
