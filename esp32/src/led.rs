@@ -1,25 +1,45 @@
-//! Status LED: one short non-blocking flash per press.
+//! Status LED: one short flash per press.
 //!
-//! The task sleeps on [`crate::LED_SIGNAL`] and, when poked, lights the LED
-//! for [`FLASH`] then turns it off. It never blocks any other task.
+//! [`StatusLed::flash`] turns the LED on and arms a one-shot esp_timer that
+//! turns it off again, so the caller never waits for it.
 
-use embassy_time::{Duration, Timer};
-use esp_hal::gpio::Output;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use esp_idf_svc::hal::gpio::{Output, PinDriver};
+use esp_idf_svc::sys::EspError;
+use esp_idf_svc::timer::{EspTaskTimerService, EspTimer};
 
 /// How long the LED stays lit after a press.
 const FLASH: Duration = Duration::from_millis(60);
 
-/// Drive the status LED (GPIO18, active-high). Owns the pin for the whole run.
-#[embassy_executor::task]
-pub async fn led_task(mut led: Output<'static>) {
-    led.set_low();
+pub struct StatusLed {
+    pin: Arc<Mutex<PinDriver<'static, Output>>>,
+    /// Wakes the chip from light sleep, so the LED never stays on longer.
+    off: EspTimer<'static>,
+}
 
-    loop {
-        // Parks until a press is registered.
-        crate::LED_SIGNAL.wait().await;
+impl StatusLed {
+    pub fn new(
+        mut pin: PinDriver<'static, Output>,
+        timers: &EspTaskTimerService,
+    ) -> Result<Self, EspError> {
+        pin.set_low()?;
+        let pin = Arc::new(Mutex::new(pin));
 
-        led.set_high();
-        Timer::after(FLASH).await;
-        led.set_low();
+        let off_pin = pin.clone();
+        let off = timers.timer(move || {
+            let _ = off_pin.lock().unwrap().set_low();
+        })?;
+
+        Ok(Self { pin, off })
+    }
+
+    /// Light the LED for [`FLASH`]. A flash during a flash extends it.
+    pub fn flash(&self) {
+        let _ = self.pin.lock().unwrap().set_high();
+        if let Err(e) = self.off.after(FLASH) {
+            log::warn!("[led] timer: {e}");
+        }
     }
 }

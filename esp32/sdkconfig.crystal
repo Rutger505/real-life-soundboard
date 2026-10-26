@@ -1,0 +1,16 @@
+# Overlay for boards WITH a 32.768 kHz crystal on GPIO32/33 (32K_XP/32K_XN),
+# on top of sdkconfig.defaults. Build with:
+#
+#   ESP_IDF_SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.crystal" cargo build --release
+#
+# The crystal keeps the RTC and the BLE controller's sleep clock running in
+# light sleep, so src/power.rs turns automatic light sleep on (it keys off
+# CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL). Without a working crystal ESP-IDF
+# logs "32.768kHz XTAL not detected" and falls back to the main crystal.
+
+CONFIG_RTC_CLK_SRC_EXT_CRYS=y
+CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL=y
+
+# Faster sleep entry/exit, from IRAM.
+CONFIG_PM_SLP_IRAM_OPT=y
+CONFIG_PM_RTOS_IDLE_OPT=y

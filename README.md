@@ -107,9 +107,8 @@ voltage. A voltage divider makes it visible.
 - Measured on every button press, before the press is sent, because the
   voltage sags while the radio transmits. Also every 30 min, and once right
   after a phone connects.
-- 32 ADC samples are averaged. esp-hal has no ADC calibration for the classic
-  ESP32, so the firmware uses ESP-IDF's line fit for 11 dB with the chip's
-  eFuse Vref. Expect ±5-10 %.
+- 32 ADC samples are averaged, then converted with ESP-IDF's ADC calibration
+  (line fitting at 12 dB, from the chip's eFuse values). Expect ±5-10 %.
 - Voltage to percent through a resting LiPo curve (4.2 V = 100 %, 3.8 V = 55 %,
   3.7 V = 35 %, 3.3 V = 0 %).
 - Both battery characteristics only notify when the percentage changes. Reads
@@ -140,19 +139,19 @@ voltage. A voltage divider makes it visible.
 
 ## ESP32 firmware
 
-Bare-metal (`no_std`) Xtensa, built on [esp-hal](https://github.com/esp-rs/esp-hal) with
-[trouble](https://github.com/embassy-rs/trouble) as the BLE host and `esp-radio` as the
-controller. **There is no ESP-IDF involved**, and no `ldproxy`: `esp-hal` ships the linker
-script and `rust-toolchain.toml` pins the `esp` channel. The target is
-`xtensa-esp32-none-elf`, and `core`/`alloc` are compiled from source via `build-std`.
+Rust on ESP-IDF (`std`), through [esp-idf-svc](https://github.com/esp-rs/esp-idf-svc)
+and its Bluedroid GATT server. The target is `xtensa-esp32-espidf`; `embuild` downloads
+and builds ESP-IDF v5.5.5 on the first build, and `ldproxy` links. ESP-IDF and its tools
+go to `~/.espressif` (`ESP_IDF_TOOLS_INSTALL_DIR = "global"`), so `cargo clean` does not
+download them again.
 
-The Xtensa toolchain still comes from `espup`, per the
-[esp-rs book](https://esp-rs.github.io/book/):
+The Xtensa Rust toolchain comes from `espup`, per the
+[esp-rs book](https://docs.esp-rs.org/book/):
 
 ```bash
 # Install toolchain (once). Run this from $HOME, not from esp32/ --
 # rust-toolchain.toml there pins the 'esp' channel before it exists.
-cargo install espup      # or grab the prebuilt binary from the espup releases
+cargo install espup ldproxy espflash
 espup install            # Xtensa Rust + Xtensa LLVM + GCC xtensa-esp-elf
 
 # Load the environment into the shell (espup writes this file)
@@ -163,25 +162,37 @@ cd esp32
 cargo build --release
 
 # Flash (replace /dev/ttyUSB0 with your port)
-espflash flash target/xtensa-esp32-none-elf/release/soundboard-esp32 \
+espflash flash target/xtensa-esp32-espidf/release/soundboard-esp32 \
   --port /dev/ttyUSB0 --monitor
 ```
 
-The resulting binary is `esp32/target/xtensa-esp32-none-elf/release/soundboard-esp32`
-(Xtensa ELF, ~5.4 MB unstripped with debug info). A cold release build takes roughly
-7 minutes, since `build-std` recompiles `core` and `alloc` first.
+The binary is `esp32/target/xtensa-esp32-espidf/release/soundboard-esp32`. The first
+build takes a long while (ESP-IDF clone, tools, CMake build); later builds only rebuild
+ESP-IDF when `sdkconfig.*` changes.
 
-> The `esp-*` and `trouble-host` versions in `esp32/Cargo.toml` are pinned to specific git
-> revisions on purpose — the crates.io releases do not form a coherent set (`esp-radio`
-> 0.18 speaks `bt-hci` 0.8 while `trouble-host` 0.7 needs 0.9). See the comment in that
-> file before bumping anything.
+The ESP-IDF settings live in `esp32/sdkconfig.defaults`: BLE-only Bluedroid, one
+connection, modem sleep, frequency scaling (80 MHz max, 40 MHz idle) and 1 ms FreeRTOS
+ticks.
+
+### With the 32.768 kHz crystal
+
+Once the crystal is fitted (see the TODO below), build with the `sdkconfig.crystal`
+overlay. It moves the RTC and the BLE sleep clock to the crystal, and the firmware then
+enables automatic light sleep between connection events:
+
+```bash
+ESP_IDF_SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.crystal" cargo build --release
+```
+
+The boot log says `light sleep: on`. If the crystal does not start, ESP-IDF warns
+`32.768kHz XTAL not detected` and falls back to the main crystal, so the board still
+works, just without light sleep.
 
 ### Logging
 
-Builds keep only warnings and errors: the `release_max_level_warn` feature on `log` in
-`esp32/Cargo.toml` compiles everything below that out of every crate, and `ESP_LOG` in
-`esp32/.cargo/config.toml` is set to match. To see button presses and BLE events on the
-serial monitor, raise both to info (`release_max_level_info` and `ESP_LOG = "info"`).
+Builds log only warnings and errors (`CONFIG_LOG_DEFAULT_LEVEL_WARN` in
+`esp32/sdkconfig.defaults`). To see button presses and BLE events on the serial monitor,
+switch it to `CONFIG_LOG_DEFAULT_LEVEL_INFO`.
 
 ## Android app
 
@@ -210,9 +221,9 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 ### 32.768 kHz crystal and ESP-IDF light sleep
 
 A 32.768 kHz crystal on GPIO32/33 lets the BLE controller keep time while the
-chip light-sleeps between connection events. That needs ESP-IDF; the current
-bare-metal firmware (esp-radio) keeps BLE sleep disabled, so the crystal does
-nothing until the firmware moves back to Rust + ESP-IDF.
+chip light-sleeps between connection events. That needs ESP-IDF, which is why the
+firmware moved back from bare-metal (esp-radio keeps BLE sleep disabled) to
+Rust + ESP-IDF.
 
 **Hardware: current state**
 
@@ -241,15 +252,17 @@ Keep GPIO26/27 unused (board fault between them).
 
 **Firmware**
 
-- [ ] Port the firmware back to Rust + ESP-IDF (esp-idf-svc). The version
-  before `cb83e08` is a starting point; its `sdkconfig.defaults` already has a
-  commented-out block for boards with a crystal.
-- [ ] Enable `CONFIG_RTC_CLK_SRC_EXT_CRYS`, `CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL`,
+- [x] Port the firmware back to Rust + ESP-IDF (esp-idf-svc), firmware 0.4.0.
+- [x] Enable `CONFIG_RTC_CLK_SRC_EXT_CRYS`, `CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL`,
   `CONFIG_BTDM_CTRL_MODEM_SLEEP`, `CONFIG_PM_ENABLE` and
-  `CONFIG_FREERTOS_USE_TICKLESS_IDLE`, and light sleep in `esp_pm_configure`.
-- [ ] Keep the current matrix pins, LED and the BLE UUIDs (button + battery),
+  `CONFIG_FREERTOS_USE_TICKLESS_IDLE`, and light sleep in `esp_pm_configure`
+  (the crystal ones in `esp32/sdkconfig.crystal`).
+- [x] Keep the current matrix pins, LED and the BLE UUIDs (button + battery),
   so the app works with either firmware.
-- [ ] Use ESP-IDF's ADC calibration for the battery reading.
+- [x] Use ESP-IDF's ADC calibration for the battery reading.
+- [ ] Flash 0.4.0 and check presses, battery and reconnects on the board.
+- [ ] Flash the crystal build and check the boot log says `light sleep: on`
+  without the `32.768kHz XTAL not detected` warning.
 - [ ] Measure the battery drain before and after, to see what it gains.
 
 ## Versioning
@@ -265,6 +278,6 @@ Bump the version with every change you ship:
 ## Project structure
 
 ```
-esp32/          Rust firmware (no_std, esp-hal + esp-radio + trouble-host BLE)
+esp32/          Rust firmware (ESP-IDF std, esp-idf-svc + Bluedroid BLE)
 android/        Android app (Kotlin, Jetpack Compose)
 ```

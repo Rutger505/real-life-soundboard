@@ -1,23 +1,19 @@
-# Bare-metal Xtensa target. No ESP-IDF, no ldproxy: esp-hal ships the linker
-# script (linkall.x) and we pull it in with a plain linker arg below.
 [build]
-target = "xtensa-esp32-none-elf"
+target = "xtensa-esp32-espidf"
 
-[target.xtensa-esp32-none-elf]
-rustflags = [
-  # esp-hal's linker script; wires up the ROM layout, IRAM/DRAM sections, etc.
-  "-C", "link-arg=-Tlinkall.x",
-  # Needed for esp-backtrace to walk the stack on a panic.
-  "-C", "force-frame-pointers",
-]
+[target.xtensa-esp32-espidf]
+linker = "ldproxy"
 runner = "espflash flash --monitor --chip esp32"
+rustflags = ["--cfg", "espidf_time64"]
 
-
-# The Xtensa target has no prebuilt std/core, so build the sysroot crates we
-# actually use (core + alloc for the BLE host's heap-backed collections).
 [unstable]
-build-std = ["core", "alloc"]
+build-std = ["std", "panic_abort"]
 
 [env]
-# Capped by the release_max_level_* feature on `log` in Cargo.toml.
-ESP_LOG = "warn"
+MCU = "esp32"
+ESP_IDF_VERSION = "v5.5.5"
+# Shared ESP-IDF + tools in ~/.espressif instead of a per-checkout .embuild,
+# so `cargo clean` or a second checkout does not download them again.
+ESP_IDF_TOOLS_INSTALL_DIR = "global"
+# ESP_IDF_SDKCONFIG_DEFAULTS defaults to sdkconfig.defaults. It is not set
+# here so the crystal build can override it from the shell (see the README).
