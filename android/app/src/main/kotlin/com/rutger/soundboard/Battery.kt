@@ -15,7 +15,7 @@ const val LOW_BATTERY_PERCENT = 15
 
 /**
  * A jump up of this many points between two samples means the battery was
- * charged. The firmware can't report charging yet, and normal reading noise is
+ * charged. The ESP32 firmware can't report charging, and normal reading noise is
  * only a few %.
  */
 private const val CHARGE_JUMP_PERCENT = 10
@@ -29,9 +29,11 @@ private const val MAX_SAMPLES = 5_000
 
 private const val HOUR_MS = 60 * 60 * 1000.0
 
-/** Charging state byte of Battery (raw). Only "unknown" exists until TP4056 CHRG is wired. */
+/** Charging state byte of Battery (raw). The ESP32 always sends 0; the nRF52 reads its charger. */
 fun chargingLabel(state: Int): String = when (state) {
     0 -> "unknown"
+    1 -> "charging"
+    2 -> "not charging"
     else -> "unknown ($state)"
 }
 
