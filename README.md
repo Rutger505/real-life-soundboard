@@ -281,6 +281,38 @@ fault logs and resets the chip.
 - [ ] Check the granted connection parameters in the log.
 - [ ] Measure the idle current (PPK2 on the BAT pads, probe unplugged).
 
+## Case
+
+One parametric OpenSCAD file per board, for PLA and printed without supports:
+
+- `esp32/case/real-live-soundboard.scad`: ESP32, TP4056, buck-boost and LiPo, 56 x 100 x 25 mm.
+- `nrf52/case/real-live-soundboard.scad`: XIAO nRF52840 and LiPo, 47.6 x 65.3 x 20.9 mm.
+
+Both start with the measured parts, then derived values and `assert`s for every
+clearance they rely on. The `part` dropdown in the OpenSCAD customizer picks what to
+show: `assembly` and `open` (with the parts as ghosts), `tray`, `lid`, `plate` or
+`print` (all three laid out on the bed). Closed with four M2 self-tapping screws.
+
+**nRF52 case**
+
+- Front band: the XIAO lies on two rails under its short ends, so the wires from the
+  BAT and SWD pads on its underside leave underneath. USB-C goes out the left wall.
+  The slide switch is in the right wall, the status LED hangs off the front wall
+  between them. A dab of hot glue on the rails keeps the board down.
+- Back band: the LiPo, with the side walls, a rear beam and a front rib around it.
+  The leads leave at the front corners.
+- The 3x3 button plate sits over the battery, pegged onto two side posts and the
+  rear beam.
+- Tolerances are half the ESP32 case's, like the motorized-blinds remote (those
+  printed too loose). The XIAO sizes are datasheet values: measure the board first.
+
+Render to check the asserts and the size:
+
+```bash
+cd nrf52/case    # or esp32/case
+for p in tray lid plate; do openscad -o ~/Temporary/$p.stl -D "part=\"$p\"" real-live-soundboard.scad; done
+```
+
 ## Android app
 
 Requires JDK 17 and Android SDK 35 (`platforms;android-35`, `build-tools;35.0.0`).
@@ -366,6 +398,8 @@ Bump the version with every change you ship:
 
 ```
 esp32/          Rust firmware (ESP-IDF std, esp-idf-svc + Bluedroid BLE)
+esp32/case/     OpenSCAD case for the ESP32 build
 nrf52/          Rust firmware for the XIAO nRF52840 (Embassy, nrf-sdc + TrouBLE)
+nrf52/case/     OpenSCAD case for the nRF52 build
 android/        Android app (Kotlin, Jetpack Compose)
 ```

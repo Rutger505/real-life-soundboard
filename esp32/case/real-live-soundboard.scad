@@ -3,7 +3,7 @@
 
 $fa = 2; $fs = 0.4;
 
-part = "assembly";      // "assembly" | "open" | "tray" | "lid" | "plate" | "print"
+part = "assembly";      // [assembly, open, tray, lid, plate, print]
 
 /* [Measured components] */
 bat   = [43,  25,   8.5];
