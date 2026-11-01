@@ -12,8 +12,8 @@
 
 use esp_idf_svc::sys::{self, esp, EspError};
 
-/// Light sleep between events, on when the firmware is built with
-/// `sdkconfig.crystal` (see the README).
+/// Light sleep between events, on when `sdkconfig.defaults` selects the
+/// 32.768 kHz crystal as the BLE low-power clock.
 ///
 /// The BLE controller has to keep time from a low-power clock while the chip
 /// sleeps. The main crystal stops in light sleep, so with

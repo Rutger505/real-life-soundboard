@@ -1,5 +1,4 @@
-# ESP-IDF settings for the soundboard. Boards WITH the 32.768 kHz crystal
-# add sdkconfig.crystal on top (see the README).
+# ESP-IDF settings for the soundboard.
 #
 # This is an ESP32 classic: its Bluetooth controller options are named
 # BTDM_*. The BT_CTRL_* spellings belong to the C3/S3 and are silently ignored.
@@ -22,17 +21,24 @@ CONFIG_BT_ACL_CONNECTIONS=1
 CONFIG_BTDM_CTRL_MODEM_SLEEP=y
 CONFIG_BTDM_CTRL_MODEM_SLEEP_MODE_ORIG=y
 
-# BLE low-power clock. The main crystal allows modem sleep and frequency
-# scaling, but stops in light sleep, so the controller keeps the CPU awake
-# while BLE is up. sdkconfig.crystal switches this to the 32.768 kHz crystal.
-CONFIG_BTDM_CTRL_LPCLK_SEL_MAIN_XTAL=y
+# RTC and BLE low-power clock from the 32.768 kHz crystal on GPIO32/33
+# (32K_XP/32K_XN). It keeps running in light sleep, so the controller can keep
+# time while the chip sleeps between connection events, and src/power.rs turns
+# automatic light sleep on (it keys off CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL).
+# If the crystal does not start, ESP-IDF logs "32.768kHz XTAL not detected" and
+# falls back to the main crystal: the board works, but stays awake.
+CONFIG_RTC_CLK_SRC_EXT_CRYS=y
+CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL=y
 
-# Frequency scaling (and light sleep with the crystal). The min/max come from
-# esp_pm_configure() in src/power.rs.
+# Frequency scaling and light sleep. The min/max come from esp_pm_configure()
+# in src/power.rs.
 CONFIG_PM_ENABLE=y
 CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
 CONFIG_FREERTOS_IDLE_TIME_BEFORE_SLEEP=3
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_80=y
+# Faster sleep entry/exit, from IRAM.
+CONFIG_PM_SLP_IRAM_OPT=y
+CONFIG_PM_RTOS_IDLE_OPT=y
 
 # 1 ms ticks, so the 5 ms matrix scan is 5 ms and not rounded up to 10.
 # Tickless idle skips the ticks while nothing is due.

@@ -157,13 +157,10 @@ espup install            # Xtensa Rust + Xtensa LLVM + GCC xtensa-esp-elf
 # Load the environment into the shell (espup writes this file)
 . $HOME/export-esp.sh
 
-# Build
+# Build, flash and open the serial monitor (espflash is the cargo runner)
 cd esp32
-cargo build --release
-
-# Flash (replace /dev/ttyUSB0 with your port)
-espflash flash target/xtensa-esp32-espidf/release/soundboard-esp32 \
-  --port /dev/ttyUSB0 --monitor
+cargo run --release
+# Pick the port: cargo run --release -- --port /dev/ttyUSB0
 ```
 
 The binary is `esp32/target/xtensa-esp32-espidf/release/soundboard-esp32`. The first
@@ -171,23 +168,10 @@ build takes a long while (ESP-IDF clone, tools, CMake build); later builds only 
 ESP-IDF when `sdkconfig.*` changes.
 
 The ESP-IDF settings live in `esp32/sdkconfig.defaults`: BLE-only Bluedroid, one
-connection, modem sleep, frequency scaling (80 MHz max, 40 MHz idle) and 1 ms FreeRTOS
-ticks.
-
-### With the 32.768 kHz crystal
-
-Once the crystal is fitted (see the TODO below), build with the `sdkconfig.crystal`
-overlay. It moves the RTC and the BLE sleep clock to the crystal, and the firmware then
-enables automatic light sleep between connection events:
-
-```bash
-cd esp32
-ESP_IDF_SDKCONFIG_DEFAULTS="$PWD/sdkconfig.defaults;$PWD/sdkconfig.crystal" cargo build --release
-```
-
-Use absolute paths: esp-idf-sys resolves relative ones against the parent of the target
-dir, so with a custom `CARGO_TARGET_DIR` they silently point nowhere. The resolved
-settings end up in `target/xtensa-esp32-espidf/release/build/esp-idf-sys-*/out/sdkconfig`.
+connection, modem sleep, frequency scaling (80 MHz max, 40 MHz idle), 1 ms FreeRTOS
+ticks, and the 32.768 kHz crystal on GPIO32/33 as RTC and BLE sleep clock, so the chip
+light-sleeps between connection events. The resolved settings end up in
+`target/xtensa-esp32-espidf/release/build/esp-idf-sys-*/out/sdkconfig`.
 
 The boot log says `light sleep: on`. If the crystal does not start, ESP-IDF warns
 `32.768kHz XTAL not detected` and falls back to the main crystal, so the board still
@@ -236,9 +220,7 @@ Rust + ESP-IDF.
 - [x] Load capacitors, one from GPIO32 to GND and one from GPIO33 to GND.
 - [x] Load capacitors are 22 pF (a 32.768 kHz crystal needs about 10-22 pF).
 - [x] Crystal soldered between GPIO32 and GPIO33.
-- [ ] Clean the flux off around GPIO32/33 and the crystal (isopropyl alcohol and a
-  brush). The oscillator is very high impedance, so flux residue can leak enough
-  to stop it or make it unreliable.
+- [x] Flux cleaned off around GPIO32/33 and the crystal.
 - [x] Row 1 moved from GPIO32 to GPIO14.
 - [x] Divider's top wire is on the power switch output, so it draws nothing while off.
 
@@ -260,12 +242,12 @@ Keep GPIO26/27 unused (board fault between them).
 - [x] Enable `CONFIG_RTC_CLK_SRC_EXT_CRYS`, `CONFIG_BTDM_CTRL_LPCLK_SEL_EXT_32K_XTAL`,
   `CONFIG_BTDM_CTRL_MODEM_SLEEP`, `CONFIG_PM_ENABLE` and
   `CONFIG_FREERTOS_USE_TICKLESS_IDLE`, and light sleep in `esp_pm_configure`
-  (the crystal ones in `esp32/sdkconfig.crystal`).
+  (all in `esp32/sdkconfig.defaults`).
 - [x] Keep the current matrix pins, LED and the BLE UUIDs (button + battery),
   so the app works with either firmware.
 - [x] Use ESP-IDF's ADC calibration for the battery reading.
-- [ ] Flash 0.4.0 and check presses, battery and reconnects on the board.
-- [ ] Flash the crystal build and check the boot log says `light sleep: on`
+- [ ] Flash 0.5.0 and check presses, battery and reconnects on the board.
+- [ ] Check the boot log says `light sleep: on`
   without the `32.768kHz XTAL not detected` warning.
 - [ ] Measure the battery drain before and after, to see what it gains.
 
