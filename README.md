@@ -234,14 +234,13 @@ Rust + ESP-IDF.
 
 - [x] Battery divider: `OUT+ ─100k─┬─100k─ GND`, midpoint to GPIO34.
 - [x] Load capacitors, one from GPIO32 to GND and one from GPIO33 to GND.
-- [ ] Check the load capacitors' value. They were fitted as "10 nF", but a
-  32.768 kHz crystal needs about 10-22 pF. 10 nF (marked `103`) is 1000x too
-  much and stops the crystal from oscillating. 10 pF is marked `100`.
-- [ ] Solder the crystal between GPIO32 and GPIO33 (either way round). Keep the
-  leads as short as possible and clean the flux off afterwards.
-- [ ] Confirm row 1 moved from GPIO32 to GPIO14 (firmware 0.3.0 expects 14).
-- [ ] Confirm the divider's top wire is on the power switch output, not on
-  TP4056 `OUT+` before the switch. Before the switch it drains ~20 µA while off.
+- [x] Load capacitors are 22 pF (a 32.768 kHz crystal needs about 10-22 pF).
+- [x] Crystal soldered between GPIO32 and GPIO33.
+- [ ] Clean the flux off around GPIO32/33 and the crystal (isopropyl alcohol and a
+  brush). The oscillator is very high impedance, so flux residue can leak enough
+  to stop it or make it unreliable.
+- [x] Row 1 moved from GPIO32 to GPIO14.
+- [x] Divider's top wire is on the power switch output, so it draws nothing while off.
 
 Target wiring:
 
