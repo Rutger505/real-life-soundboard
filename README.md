@@ -285,7 +285,7 @@ fault logs and resets the chip.
 
 One parametric OpenSCAD file per board, for PLA and printed without supports:
 
-- `esp32/case/real-live-soundboard.scad`: ESP32, TP4056, buck-boost and LiPo, 56 x 100 x 25 mm.
+- `esp32/case/real-live-soundboard.scad`: ESP32, TP4056, buck-boost and LiPo, 56 x 87.4 x 23.2 mm.
 - `nrf52/case/real-live-soundboard.scad`: XIAO nRF52840 and LiPo, 47.6 x 65.3 x 20.9 mm.
 
 Both start with the measured parts, then derived values and `assert`s for every
