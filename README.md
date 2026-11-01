@@ -183,6 +183,104 @@ Builds log only warnings and errors (`CONFIG_LOG_DEFAULT_LEVEL_WARN` in
 `esp32/sdkconfig.defaults`). To see button presses and BLE events on the serial monitor,
 switch it to `CONFIG_LOG_DEFAULT_LEVEL_INFO`.
 
+## nRF52 firmware (XIAO nRF52840)
+
+A port of the ESP32 firmware to a Seeed XIAO nRF52840, for a much lower standby
+draw. Same buttons, LED, GATT services and UUIDs, so the app works with either
+board. Rust on [Embassy](https://embassy.dev), with Nordic's SoftDevice Controller
+([nrf-sdc](https://github.com/alexmoon/nrf-sdc)) as BLE link layer and
+[TrouBLE](https://github.com/embassy-rs/trouble) as host.
+
+**Hardware**
+
+| Signal   | XIAO pin | nRF pin | Firmware setup                     |
+|----------|----------|---------|------------------------------------|
+| Row 0    | D0       | P0.02   | input, internal pull-up            |
+| Row 1    | D1       | P0.03   | input, internal pull-up            |
+| Row 2    | D2       | P0.28   | input, internal pull-up            |
+| Column 0 | D3       | P0.29   | open-drain output                  |
+| Column 1 | D4       | P0.04   | open-drain output                  |
+| Column 2 | D5       | P0.05   | open-drain output                  |
+| LED+     | D6       | P1.11   | push-pull output, through the resistor |
+
+- The LiPo goes straight to the **BAT+ / BAT-** pads on the back, with the power
+  switch in BAT+. No buck-boost, no TP4056 and no external divider: the XIAO has
+  its own regulator, charger (BQ25101, charges from USB-C) and battery divider.
+  With the switch off, USB-C does not reach the cell, so switch on to charge.
+- The 32.768 kHz crystal is on the board.
+
+**Power**
+
+- Idle draw is the chip sleeping with RAM kept and the RTC running, plus the
+  radio waking for the link. Expect roughly 5-10 µA connected and idle.
+- 32.768 kHz crystal as low-frequency clock, DC/DC regulator on, QSPI flash in
+  deep power-down (`nrf52/src/main.rs`, `flash.rs`).
+- Buttons wake the chip through GPIO sense, which costs nothing while idle.
+- The firmware asks the phone for a 30-45 ms interval with peripheral latency 32:
+  presses still go out at the next interval, but the idle radio only wakes about
+  every 1.5 s. The boot log shows what the phone granted.
+- Advertising is fast (100-200 ms) for 30 s after boot or a disconnect, then slow
+  (1-1.2 s) until a phone connects.
+- The XIAO's battery divider stays enabled (P0.14 low), ~2.8 µA. Disabling it
+  would put P0.31 at its absolute maximum voltage; Seeed says to leave it low.
+- A connected probe keeps the debug logic powered (~mA). Measure with the probe
+  unplugged.
+
+**Battery** (`nrf52/src/battery.rs`)
+
+- SAADC on P0.31 through the 1M / 510k divider, internal reference, 16x
+  hardware oversampling, calibrated on every reading. Same LiPo curve and same
+  measuring moments as the ESP32 firmware.
+- Charging state from the charger's status pin (P0.17): Battery (raw) reports
+  1 = charging, 2 = not charging.
+
+**Debug probe**
+
+Flashing and logs go over SWD with [probe-rs](https://probe.rs). A Raspberry Pi
+Pico (H) with the [debugprobe](https://github.com/raspberrypi/debugprobe)
+firmware works: hold BOOTSEL, plug it in, copy `debugprobe_on_pico.uf2` onto it.
+
+| Pico      | XIAO (pads on the back) |
+|-----------|-------------------------|
+| GP2       | SWCLK                   |
+| GP3       | SWDIO                   |
+| GND       | GND                     |
+
+Power the XIAO from its own USB-C or the battery, not from the Pico.
+
+**Build and flash**
+
+```bash
+# Once: target and probe-rs
+rustup target add thumbv7em-none-eabihf
+curl -LsSf https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
+
+cd nrf52
+# The XIAO ships with the UF2 bootloader and the chip locked for debugging.
+# The first time, erase it all (this removes the UF2 bootloader):
+probe-rs erase --chip nRF52840_xxAA --allow-erase-all
+
+# Build, flash and stream the log (probe-rs is the cargo runner)
+cargo run --release
+```
+
+The firmware is linked at address 0 (`nrf52/memory.x`) and keeps debugging
+enabled, so later flashes need no erase. To go back to UF2, flash Seeed's
+bootloader hex with `probe-rs download --binary-format hex`.
+
+**Logging**
+
+[defmt](https://defmt.ferrous-systems.com) over RTT, shown by `cargo run`. The
+level is `DEFMT_LOG` in `nrf52/.cargo/config.toml` (`info`). A panic or hard
+fault logs and resets the chip.
+
+**TODO**
+
+- [ ] Wire the matrix, LED and battery to the XIAO.
+- [ ] Flash and check presses, battery, charging state and reconnects.
+- [ ] Check the granted connection parameters in the log.
+- [ ] Measure the idle current (PPK2 on the BAT pads, probe unplugged).
+
 ## Android app
 
 Requires JDK 17 and Android SDK 35 (`platforms;android-35`, `build-tools;35.0.0`).
@@ -262,11 +360,12 @@ Bump the version with every change you ship:
   `versionName` (e.g. `1.0` → `1.1`). The build appends the git commit (`1.1+<hash>`, with
   `-dirty` for uncommitted changes) and the app shows it under the grid, so you can tell
   which build is installed on the phone.
-- **Firmware:** bump `version` in `esp32/Cargo.toml`.
+- **Firmware:** bump `version` in `esp32/Cargo.toml` or `nrf52/Cargo.toml`.
 
 ## Project structure
 
 ```
 esp32/          Rust firmware (ESP-IDF std, esp-idf-svc + Bluedroid BLE)
+nrf52/          Rust firmware for the XIAO nRF52840 (Embassy, nrf-sdc + TrouBLE)
 android/        Android app (Kotlin, Jetpack Compose)
 ```

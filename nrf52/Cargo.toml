@@ -1,0 +1,37 @@
+[package]
+name = "soundboard-nrf52"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+
+[[bin]]
+name = "soundboard-nrf52"
+test = false
+bench = false
+
+[dependencies]
+embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "defmt"] }
+embassy-time = { version = "0.5", features = ["defmt", "defmt-timestamp-uptime"] }
+embassy-nrf = { version = "0.11", features = ["nrf52840", "defmt", "time-driver-rtc1", "gpiote", "unstable-pac", "rt"] }
+embassy-futures = "0.1.2"
+embassy-sync = { version = "0.8", features = ["defmt"] }
+
+nrf-sdc = { version = "0.4", default-features = false, features = ["defmt", "peripheral", "nrf52840"] }
+nrf-mpsl = { version = "0.4", default-features = false, features = ["defmt", "critical-section-impl"] }
+trouble-host = { version = "0.8", default-features = false, features = ["defmt", "derive", "gatt", "peripheral", "default-packet-pool"] }
+
+defmt = "1.0"
+defmt-rtt = "1.0"
+cortex-m = "0.7.6"
+cortex-m-rt = "0.7"
+static_cell = "2"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+# Symbols only live in the ELF on the host; they never reach the chip.
+debug = 2
+
+[profile.dev]
+opt-level = "s"

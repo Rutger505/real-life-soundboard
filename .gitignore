@@ -1,6 +1,7 @@
 # Rust / ESP-IDF
 esp32/target/
 esp32/.embuild/
+nrf52/target/
 
 # Android
 android/.gradle/

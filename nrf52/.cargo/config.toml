@@ -1,0 +1,9 @@
+[target.thumbv7em-none-eabihf]
+# Flashes through the SWD probe and streams the defmt log over RTT.
+runner = "probe-rs run --chip nRF52840_xxAA"
+
+[build]
+target = "thumbv7em-none-eabihf"
+
+[env]
+DEFMT_LOG = "info"
