@@ -218,8 +218,11 @@ Rust + ESP-IDF.
 
 - [x] Battery divider: `OUT+ ─100k─┬─100k─ GND`, midpoint to GPIO34.
 - [x] Load capacitors, one from GPIO32 to GND and one from GPIO33 to GND.
-- [x] Load capacitors are 22 pF (a 32.768 kHz crystal needs about 10-22 pF).
-- [x] Crystal soldered between GPIO32 and GPIO33.
+- [x] Load capacitors are 10 pF (a 32.768 kHz crystal needs about 10-22 pF).
+- [x] Salvaged crystal from a drone board fitted. Its rating is unknown and it does
+  not start: the boot log warns `32.768kHz XTAL not detected`.
+- [ ] Replace it with a known 32.768 kHz crystal, CL about 7-9 pF to suit the 10 pF
+  capacitors, between GPIO32 and GPIO33.
 - [x] Flux cleaned off around GPIO32/33 and the crystal.
 - [x] Row 1 moved from GPIO32 to GPIO14.
 - [x] Divider's top wire is on the power switch output, so it draws nothing while off.
