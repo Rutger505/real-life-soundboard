@@ -286,7 +286,7 @@ fault logs and resets the chip.
 One parametric OpenSCAD file per board, for PLA and printed without supports:
 
 - `esp32/case/real-live-soundboard.scad`: ESP32, TP4056, buck-boost and LiPo, 56 x 87.4 x 23.2 mm.
-- `nrf52/case/real-live-soundboard.scad`: XIAO nRF52840 and LiPo, 47.6 x 65.3 x 20.9 mm.
+- `nrf52/case/real-live-soundboard.scad`: XIAO nRF52840 and LiPo, 47.6 x 51.2 x 20.9 mm.
 
 Both start with the measured parts, then derived values and `assert`s for every
 clearance they rely on. The `part` dropdown in the OpenSCAD customizer picks what to
@@ -295,14 +295,18 @@ show: `assembly` and `open` (with the parts as ghosts), `tray`, `lid`, `plate` o
 
 **nRF52 case**
 
-- Front band: the XIAO lies on two rails under its short ends, so the wires from the
-  BAT and SWD pads on its underside leave underneath. USB-C goes out the left wall.
-  The slide switch is in the right wall, the status LED hangs off the front wall
-  between them. A dab of hot glue on the rails keeps the board down.
-- Back band: the LiPo, with the side walls, a rear beam and a front rib around it.
-  The leads leave at the front corners.
-- The 3x3 button plate sits over the battery, pegged onto two side posts and the
-  rear beam.
+- The rear bosses and the front-right one hang from the lid line with 45 degree
+  ramps, so the LiPo and the XIAO reach into the corners below them.
+- Front band: the XIAO sits in the front-right corner, USB-C out the right wall,
+  D0-D6 along its back edge towards the cell. It rests on a rail under the USB end
+  and two pads under the far end, so the BAT and SWD wires leave underneath
+  towards the switch and the board sits right against the battery rib. The slide
+  switch lies against the left wall (lever sticks out 2.8 mm), the status LED
+  hangs off the front wall between them. A dab of hot glue keeps the board down.
+- Back band: the LiPo, from the battery rib to the back wall. The leads leave at
+  the front-left corner, towards the switch.
+- The 3x3 button plate sits over the battery, pegged onto a corbel on each side
+  wall and resting on a ledge along the back wall.
 - Tolerances are half the ESP32 case's, like the motorized-blinds remote (those
   printed too loose). The XIAO sizes are datasheet values: measure the board first.
 

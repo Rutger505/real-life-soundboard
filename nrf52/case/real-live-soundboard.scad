@@ -1,7 +1,9 @@
 // Soundboard enclosure for the XIAO nRF52840 build. Units: mm.
 // Origin: outside bottom-front-left corner. +Y points away from the wearer:
-// the XIAO band (USB-C out of the left wall, switch in the right wall, status
-// LED), then the battery band under the button plate.
+// the front band (switch in the left wall, status LED, XIAO with USB-C out of
+// the right wall), then the battery band under the button plate.
+// The rear bosses and the front-right one hang from the lid line, so the cell
+// and the XIAO reach into the corners below them.
 
 $fa = 2; $fs = 0.4;
 
@@ -10,19 +12,22 @@ part = "assembly";      // [assembly, open, tray, lid, plate, print]
 /* [Measured components] */
 bat   = [43,  25,   8.5];     // the ESP32 build's LiPo
 bat_room = [1, 3];            // so the cell and its leads are not squeezed
-bat_lead_gap = 10;            // the front rib stops this far short of the side walls, where the leads exit
+bat_lead_gap = 10;            // the front rib starts this far from the left wall: leads exit at the switch end
 xiao  = [21,  17.8, 1.0];     // XIAO nRF52840 PCB; USB-C on a 17.8 mm end. Datasheet values, measure the board
 xiao_top  = 3.6;              // PCB bottom to the top of the USB-C receptacle
 xiao_usb  = [9.0, 3.2];       // receptacle width and height
 xiao_usb_over = 0.6;          // receptacle past the PCB edge
-xiao_pin_free = 2.5;          // board end to the first castellated pad; the end rails stay inside this
+xiao_pin_free = 2.5;          // board end to the first castellated pad; the supports stay inside this
+xiao_pin1 = 2.88;             // board end to the centre of D0 (7 pads at 2.54, centred)
 xiao_lift  = 2.0;             // BAT+/BAT- and SWD pads are on the underside: their wires leave under the board
 xiao_wire_h = 5;              // wires soldered onto the pins from the top
+xiao_back_clr = 0.4;          // D0-D6 face the cell: room for the solder on the castellations
 matrix_wire_h = 3;            // button wires between the cell and the plate
 swb   = [8.5, 4,    3.5];
 sw_lever_h = 8;
 sw_slot_w = 5.5;
 sw_stub   = 1.0;              // back rib only at the ends, the pins leave through the middle
+sw_fit    = 0.1;              // fit printed 0.2 mm too loose for the switch
 btn   = [5.9, 5.9,  3.3];     // base to flat top
 btn_nub   = 1.4;
 btn_top   = 3.9;              // base to nub tops
@@ -36,9 +41,9 @@ wall      = 1.6;
 floor_t   = 1.2;
 top_t     = 1.6;
 corner_r  = 4.5;
+cav_r     = 1.2;              // inside corners, tight so the cell and the XIAO fit into them
 fit       = 0.2;
 rib       = 1.2;
-brk_len   = 5;
 post_t    = 2.4;
 clr_mod   = 0.3;
 weld      = 0.5;
@@ -52,7 +57,7 @@ btn_pitch = 11;
 btn_clr   = 0.1;
 btn_hole_clr = 0.15;  // the blinds remote's printed value
 plate_t   = 1.2;
-plate_lip = 1.2;      // plate reaches past the front posts, so the peg holes keep a wall
+plate_lip = 1.2;      // plate reaches past the front corbels, so the peg holes keep a wall
 pkt_drop  = 0.3;      // pocket walls and ribs stay clear of the lid; only the button tops touch it
 dish_d    = 10;
 dish_min  = 0.4;      // lid thickness at the cross arm tips
@@ -60,9 +65,11 @@ act_d     = 4.4;
 nub_clr   = 0.2;      // covers button, plate and lid play together
 peg_d     = 2.0;
 peg_hole  = 2.2;
+ledge_d   = 3;        // plate corbels and the rear ledge: depth from the wall
+ledge_flat = 0.5;     // vertical face under the plate, then 45 degrees into the wall
 
 /* [Status LED] */
-led_from_right = 14;  // LED centre from the right wall, between the XIAO and the switch
+led_from_left = 13;   // LED centre from the left wall, between the switch and the XIAO
 led_inset = 5.5;      // from the front wall
 led_d    = 3.0;
 led_rim  = 3.3;
@@ -79,13 +86,14 @@ scr_pilot = 1.7;      // M2 self-tapping
 scr_clear = 2.3;
 scr_head  = 4.4;
 boss_dia  = 2*(corner_r - wall + 0.4);
-boss_dia_s = 4.4;     // slimmer next to the XIAO
+boss_dia_s = 4.4;     // slimmer over the cell, so the plate notches stay small
 boss_in   = corner_r - 0.5;     // centre from the outside faces, as close as the countersink allows
 boss_deep = 8;
+boss_floor = 0.4;     // under the pilot hole of a hanging boss
 
 // ---------------------------------------------------------------- derived
 sw_out  = sw_lever_h - swb.z;
-sw_p    = [swb.z, swb.x, swb.y];      // lever points +X
+sw_p    = [swb.z, swb.x, swb.y];      // lever points -X
 leg_below = btn_leg - plate_t;
 
 // The XIAO band only needs the board and its wires; the battery band stacks
@@ -96,20 +104,18 @@ cav_h = max(xiao_lift + xiao_top + clr_mod + xiao_wire_h,
 bat_pkt = [bat.x + bat_room.x + 2*fit, bat.y + bat_room.y + 2*fit];
 inner_w = bat_pkt.x;                  // the side walls hold the cell
 
-// boss reach into the cavity, from the inner walls
-boss_d     = [boss_dia_s, boss_dia, boss_dia, boss_dia];   // front left, front right, rear left, rear right
-boss_reach = [for (d = boss_d) boss_in - wall + d/2];
-
-// XIAO band: the receptacle touches the left wall, clear of the front-left boss.
-xiao_pos = [xiao_usb_over, boss_reach[0] + fit + rib + fit];
+// XIAO in the front-right corner: front wall, and the receptacle on the right wall.
+xiao_pos = [inner_w - xiao_usb_over - xiao.x, fit];
 xiao_x1  = xiao_pos.x + xiao.x;
-b1_d     = xiao_pos.y + xiao.y + fit + rib;     // its back brackets end at the post line
+xiao_y1  = xiao_pos.y + xiao.y;
+usb_y = xiao_pos.y + xiao.y/2;
+usb_z = xiao_lift + xiao_top - xiao_usb.y/2;     // receptacle centre, cavity coordinates
+xiao_stop_x = xiao_pos.x - fit - rib;
 
-// Battery band: behind the middle posts, up to the rear bosses.
-b2_y    = b1_d + post_t;
-bat_end = b2_y + bat_pkt.y;                     // back of the pocket = front of the rear beam
-beam_y  = bat_end;
-inner_l = beam_y + max(boss_reach[2], boss_reach[3]) + fit;
+// The cell sits right behind the XIAO, up to the back wall.
+bat_rib_y = xiao_y1 + xiao_back_clr;
+b2_y    = bat_rib_y + rib;
+inner_l = b2_y + bat_pkt.y;
 bat_pos = [(inner_w - bat.x)/2, b2_y + (bat_pkt.y - bat.y)/2];
 
 out_w  = inner_w + 2*wall;
@@ -118,23 +124,42 @@ tray_h = floor_t + cav_h;
 out_h  = tray_h + top_t;
 lid_o  = rim_t + lid_clr;
 
-sw_pos  = [inner_w + wall - 0.4 - sw_out - sw_p.x, 9];
-led_pos = [inner_w - led_from_right, led_inset];
+// bosses: front left, front right, rear left, rear right. A boss with a low
+// above 0 hangs: 45 degree ramps off both walls, starting at that height.
+boss_d   = [boss_dia, boss_dia, boss_dia_s, boss_dia_s];
+boss_c   = boss_in - wall;            // centre from the inner walls
+boss_reach = [for (d = boss_d) boss_c + d/2];
+xiao_low = max(xiao_lift + xiao_top + clr_mod, usb_z + (xiao_usb.y + 1)/2);
+bat_low  = bat.z + clr_mod;
+boss_low = [0, xiao_low, bat_low, bat_low];
+boss_xy = [[boss_in, boss_in], [out_w-boss_in, boss_in],
+           [boss_in, out_l-boss_in], [out_w-boss_in, out_l-boss_in]];
+pilot_deep = [for (i = [0:3]) boss_low[i] <= 0 ? boss_deep
+              : min(boss_deep, cav_h - boss_low[i] - boss_c - scr_pilot/2 - boss_floor)];
+scr_len = top_t + min(pilot_deep);
+
+// Switch body against the left wall, so the lever sticks out as far as it can.
+sw_pos  = [sw_fit, boss_reach[0] + fit + rib + sw_fit];
+sw_w    = sw_p.x + 2*sw_fit;
+sw_stick = sw_out - sw_fit - wall;
+led_pos = [led_from_left, led_inset];
 
 pil_top = cav_h - btn.z - plate_t;
-beam_x  = [boss_reach[2] + fit, inner_w - boss_reach[3] - fit];
-peg_xy  = [[brk_len/2, b1_d + post_t/2], [inner_w - brk_len/2, b1_d + post_t/2],
-           [beam_x[0] + brk_len/2, beam_y + post_t/2], [beam_x[1] - brk_len/2, beam_y + post_t/2]];
 plate_x0 = 0.3;          plate_x1 = inner_w - 0.3;
-plate_y0 = b1_d - plate_lip;   plate_y1 = beam_y + post_t;
-plate_rib_x0 = brk_len + fit;
-
-btn_c   = [inner_w/2, (plate_y0 + plate_y1)/2];
+plate_y1 = inner_l - 0.3;
 btn_po  = btn.x + 2*btn_hole_clr;
 pkt_ow  = btn.x + 2*btn_clr + 2*rib;
+btn_c   = [inner_w/2, plate_y1 - rib - btn_pitch - pkt_ow/2];
+plate_y0 = btn_c.y - btn_pitch - pkt_ow/2 - rib;
+plate_rib_x0 = ledge_d + fit;
+plate_rib_w = rib + 0.01;
+corbel_y = plate_y0 + plate_lip;
+notch   = max(boss_reach[2], boss_reach[3]) + fit;
+peg_xy  = [[ledge_d/2, corbel_y + post_t/2], [inner_w - ledge_d/2, corbel_y + post_t/2]];
+ledge_low = pil_top - ledge_flat - ledge_d;
+
 pkt_h   = btn.z - pkt_drop;
 slot_l  = btn.y + 0.6;
-plate_rib_w = plate_y1 - (btn_c.y + btn_pitch + pkt_ow/2) + 0.01;
 
 nub_w    = btn_nub + 2*nub_clr;
 nub_c    = btn.x/2 - btn_nub/2;
@@ -148,34 +173,48 @@ led_seat = cav_h - led_h - led_slack;
 led_bot  = led_seat - led_bar_t;
 led_gus  = led_bot - (led_pos.y + led_or/2);
 
-usb_y = xiao_pos.y + xiao.y/2;
-usb_z = xiao_lift + xiao_top - xiao_usb.y/2;     // receptacle centre, cavity coordinates
-
-boss_xy = [[boss_in, boss_in], [out_w-boss_in, boss_in],
-           [boss_in, out_l-boss_in], [out_w-boss_in, out_l-boss_in]];
+// a point at (a, b) from the two walls of an inside corner is inside the cavity
+function in_corner(a, b) = a >= cav_r || b >= cav_r || norm([cav_r - a, cav_r - b]) <= cav_r;
 
 echo(str("body ", out_w, " x ", out_l, " x ", out_h));
+echo(str("switch lever sticks out ", sw_stick, " mm"));
+echo(str("screws up to M2 x ", floor(scr_len)));
 
-assert(xiao_x1 + fit + rib <= led_pos.x - led_or/2 - 1);           // end stop clear of the LED webs
-assert(led_pos.x + led_or/2 + 1 <= sw_pos.x - fit - rib);          // LED clear of the switch cradle
-assert(led_pos.y + led_or/2 <= sw_pos.y + sw_p.y + fit + rib + 5);
-assert(led_gus >= 1);                                               // the webs stay off the floor
+// corners
+assert(in_corner(xiao_usb_over, xiao_pos.y));                                // XIAO PCB, front-right
+assert(in_corner(bat_pos.x, inner_l - bat_pos.y - bat.y));                  // centred cell, rear corners
+assert(sqrt(2)*(corner_r - wall - cav_r) + cav_r <= corner_r - rim_t);      // lid recess still clears the cavity corner
+assert(sqrt(2)*(corner_r - boss_in) + scr_head/2 + 0.5 <= corner_r - lid_o);   // countersink keeps 0.5 of lid corner
+// hanging bosses
+assert(boss_reach[1] <= usb_y - xiao_usb.x/2 || xiao_low >= usb_z + xiao_usb.y/2 + clr_mod);
+assert(min(pilot_deep) >= 4);
+assert(boss_low[1] + boss_reach[1] < cav_h && boss_low[2] + boss_reach[2] < cav_h);
+// front band
+assert(sw_pos.y - sw_fit - rib >= boss_reach[0] + fit);                     // switch cradle clear of the front-left boss
+assert(sw_pos.y + sw_p.y + sw_fit + rib <= bat_rib_y);
+assert(sw_stick >= 2.5);
+assert(led_pos.x - led_or/2 >= max(boss_reach[0], sw_w + rib) + 1);         // LED clear of the boss and the switch cradle
+assert(led_pos.x + led_or/2 + 1 <= xiao_stop_x);                            // and of the XIAO end stops
+assert(led_gus >= 1);                                                        // the webs stay off the floor
 assert(led_leg_gap <= led_d - 1);
-assert(sw_pos.y - fit - rib >= boss_reach[1] + fit);               // switch cradle clear of the front-right boss
-assert(sw_pos.y + sw_p.y + fit + rib <= b1_d);
-assert(usb_y - 6.5 >= boss_reach[0] + 1);                          // USB-C relief clear of the boss
+assert(wall + usb_y - 6.5 >= corner_r - 0.5);                               // USB-C relief stays off the rounded corner
 assert(xiao_pin_free >= 2);
+assert(bat_lead_gap <= xiao_stop_x);                                         // lead gap opens into the switch side
+// plate
 assert(pil_top >= bat.z + clr_mod + leg_below);
-assert(plate_rib_w >= rib);
-assert(btn_c.x - btn_pitch - pkt_ow/2 >= max(boss_reach[2], boss_reach[3]) + fit);  // grid clear of the plate's corner notches
-assert(btn_c.y - btn_pitch - pkt_ow/2 - rib >= plate_y0);
+assert(ledge_low >= bat_low);                                                // rear ledge clears the cell
+assert(ledge_low >= xiao_low && ledge_d <= xiao_usb_over + xiao_pin1 - 0.4);   // right corbel over the XIAO, clear of D0's wire
+assert(ledge_low >= xiao_lift + xiao.z + xiao_wire_h);
+assert(plate_y0 >= led_pos.y + led_or/2 + 1);
+assert(plate_y0 >= max(boss_reach[0], boss_reach[1]) + fit);
+assert(corbel_y + post_t <= b2_y);                                           // corbels in the front band, not over the cell
+assert(btn_c.x - btn_pitch - pkt_ow/2 >= notch);                            // grid clear of the plate's corner notches
 assert(peg_xy[0].x + peg_hole/2 + 0.4 <= plate_rib_x0);
-assert(bat_pkt.x - 2*bat_lead_gap >= 10);
+assert(peg_d/2 + 0.4 <= ledge_d/2);
 assert(act_rise < top_t);
 assert(dish_min >= 0.4);
 assert(cross_w >= 2);
 assert(dish_d < btn_pitch);
-assert(sqrt(2)*(corner_r - boss_in) + scr_head/2 + 0.5 <= corner_r - lid_o);   // countersink keeps 0.5 of lid corner
 
 // ================================================================ helpers
 module rrect(sx, sy, r, h)
@@ -187,84 +226,108 @@ module at(x, y, z = 0) translate([wall + x, wall + y, floor_t + z]) children();
 
 module cavity(extra = 0, drop = 0, grow = 0)
     translate([wall - grow, wall - grow, floor_t - drop])
-        rrect(inner_w + 2*grow, inner_l + 2*grow, corner_r - wall + grow, cav_h + extra + drop);
+        rrect(inner_w + 2*grow, inner_l + 2*grow, cav_r + grow, cav_h + extra + drop);
 
 module each_key()
     for (i = [-1:1], j = [-1:1])
         translate([btn_c.x + i*btn_pitch, btn_c.y + j*btn_pitch]) children();
 
+// Plate support off a wall, at the origin: the wall is the YZ plane, the
+// support goes +X and runs len along +Y. Flat top at pil_top, 45 degrees below.
+module wall_ledge(len)
+    translate([0, len, floor_t + pil_top]) rotate([90, 0, 0]) linear_extrude(height = len)
+        polygon([[-weld, 0], [ledge_d, 0], [ledge_d, -ledge_flat],
+                 [0, -ledge_flat - ledge_d], [-weld, -ledge_flat - ledge_d - weld]]);
+
 // =================================================================== tray
 module usbc_cut() {
     y = wall + usb_y;
     z = floor_t + usb_z;
-    translate([-1, y - (xiao_usb.x + 1)/2, z - (xiao_usb.y + 1)/2])
+    translate([out_w - wall - 1, y - (xiao_usb.x + 1)/2, z - (xiao_usb.y + 1)/2])
         cube([wall + 2, xiao_usb.x + 1, xiao_usb.y + 1]);
-    translate([-1, y - 6.5, z - 3.1]) cube([1.8, 13, 6.2]);      // overmould relief
+    translate([out_w - 0.8, y - 6.5, z - 3.1]) cube([1.8, 13, 6.2]);      // overmould relief
 }
 
 module switch_cut() {
     y = wall + sw_pos.y + sw_p.y/2;
     z = floor_t + sw_p.z/2;
-    translate([out_w - wall - 1, y - sw_slot_w/2, z - 1.5]) cube([wall + 2, sw_slot_w, 3]);
-    translate([out_w - 0.8, y - 4.5, -1]) cube([2, 9, z + 4]);       // finger relief, open at the bed so no one-layer lip
+    translate([-1, y - sw_slot_w/2, z - 1.5]) cube([wall + 2, sw_slot_w, 3]);
 }
 
-// The board rests on two rails under its short ends, inside the pin-free strips,
-// so the wires from the BAT and SWD pads leave underneath. Short corner ribs hold
-// it sideways, the far end stops it when a cable is plugged in. A dab of hot glue
-// on the rails keeps it down.
+// The board rests on a rail under its USB end, which takes the plug's push,
+// and two corner pads under the far end. The BAT and SWD wires leave under the
+// far end, towards the switch, so the board can sit right against the battery
+// rib. Front wall, battery rib and two corner stops hold it; a dab of hot glue
+// on the supports keeps it down.
 module xiao_cradle() {
     x0 = xiao_pos.x; y0 = xiao_pos.y;
-    rail_w = xiao_pin_free - 0.5;
+    pad = xiao_pin_free - 0.5;
     h = xiao_lift + xiao.z;
-    for (x = [x0, xiao_x1 - rail_w])
-        at(x, y0, -weld) cube([rail_w, xiao.y, xiao_lift + weld]);
-    for (x = [x0, xiao_x1 - rail_w], y = [y0 - fit - rib, y0 + xiao.y + fit])
-        at(x, y, -weld) cube([rail_w, rib, h + weld]);
-    at(xiao_x1 + fit, y0 - fit - rib, -weld) cube([rib, xiao.y + 2*fit + 2*rib, h + weld]);
+    at(xiao_x1 - pad, y0, -weld) cube([pad, xiao.y, xiao_lift + weld]);
+    for (y = [y0, xiao_y1 - pad])
+        at(x0, y, -weld) cube([pad, pad, xiao_lift + weld]);
+    at(xiao_stop_x, -weld, -weld) cube([rib, y0 + pad + weld, h + weld]);
+    at(xiao_stop_x, xiao_y1 - pad, -weld) cube([rib, bat_rib_y - xiao_y1 + pad + weld, h + weld]);
 }
 
-// The stops beside the wall slot keep the body from sliding out towards the wall.
+// The left wall stops the body; the pins leave through the back rib's middle.
 module switch_cradle() {
-    ox = sw_pos.x - fit; oy = sw_pos.y - fit;
-    w = sw_p.x + 2*fit;  d = sw_p.y + 2*fit;  h = sw_p.z + weld;
-    stop_d = rib + (d - sw_slot_w)/2;
-    stop_w = inner_w + weld - (ox + w);
+    oy = sw_pos.y - sw_fit;
+    d = sw_p.y + 2*sw_fit;  h = sw_p.z + weld;
+    for (y = [oy - rib, oy + d])
+        at(-weld, y, -weld) cube([sw_w + rib + weld, rib, h]);
     for (y = [oy - rib, oy + d - sw_stub])
-        at(ox - rib, y, -weld) cube([rib, rib + sw_stub, h]);
-    at(ox - rib, oy - rib, -weld) cube([w + rib, rib, h]);
-    at(ox - rib, oy + d,   -weld) cube([w + rib, rib, h]);
-    for (y = [oy - rib, oy + d + rib - stop_d])
-        at(ox + w, y, -weld) cube([stop_w, stop_d, h]);
+        at(sw_w, y, -weld) cube([rib, rib + sw_stub, h]);
 }
 
-// The hull fills the corner behind the boss, so a slim boss is still tied to the walls.
-module boss(p, d) {
+// The hull fills the corner behind the boss, so a slim boss is still tied to the
+// walls. A hanging boss is that column from boss_low + its reach up, plus a 45
+// degree ramp off each wall down to boss_low.
+module boss(i) {
+    p = boss_xy[i]; d = boss_d[i]; low = boss_low[i];
     c = [p.x < out_w/2 ? 0 : out_w, p.y < out_l/2 ? 0 : out_l];
+    z1 = low <= 0 ? floor_t - weld : floor_t + low + boss_reach[i];
+    xr = c.x == 0 ? [0, wall + boss_reach[i]] : [out_w - wall - boss_reach[i], out_w];
+    yr = c.y == 0 ? [0, wall + boss_reach[i]] : [out_l - wall - boss_reach[i], out_l];
+    xw = c.x == 0 ? wall - weld : out_w - wall;
+    yw = c.y == 0 ? wall - weld : out_l - wall;
+    strips = [[[xw, yr[0]], [weld, yr[1] - yr[0]]], [[xr[0], yw], [xr[1] - xr[0], weld]]];
     intersection() {
-        hull() {
-            translate([p.x, p.y, floor_t - weld]) cylinder(d = d, h = cav_h + weld);
-            translate([min(p.x, c.x), min(p.y, c.y), floor_t - weld])
-                cube([abs(p.x - c.x), abs(p.y - c.y), cav_h + weld]);
-        }
+        if (low <= 0)
+            hull() {
+                translate([p.x, p.y, z1]) cylinder(d = d, h = tray_h - z1);
+                translate([min(p.x, c.x), min(p.y, c.y), z1])
+                    cube([abs(p.x - c.x), abs(p.y - c.y), tray_h - z1]);
+            }
+        else
+            for (s = strips) hull() {
+                translate([p.x, p.y, z1]) cylinder(d = d, h = tray_h - z1);
+                translate([min(p.x, c.x), min(p.y, c.y), z1])
+                    cube([abs(p.x - c.x), abs(p.y - c.y), tray_h - z1]);
+                translate([s[0].x, s[0].y, floor_t + low]) cube([s[1].x, s[1].y, 0.01]);
+            }
         cavity(0, weld);
     }
 }
 
-// Plate supports: a post on each side wall between the bands, and a beam across
-// the back of the battery pocket, between the rear bosses.
+// Plate supports: a corbel on each side wall in the front band, with the pegs,
+// and a ledge along the back wall over the cell.
 module plate_supports() {
-    for (x = [-weld, inner_w - brk_len])
-        at(x, b1_d, -weld) cube([brk_len + weld, post_t, pil_top + weld]);
-    at(beam_x[0] - weld, beam_y, -weld)
-        cube([beam_x[1] - beam_x[0] + 2*weld, post_t, pil_top + weld]);
+    intersection() {
+        union() {
+            translate([wall, wall + corbel_y, 0]) wall_ledge(post_t);
+            translate([wall + inner_w, wall + corbel_y, 0]) mirror([1, 0, 0]) wall_ledge(post_t);
+            translate([wall, wall + inner_l, 0]) rotate([0, 0, -90]) wall_ledge(inner_w);
+        }
+        cavity(0, weld);
+    }
     for (p = peg_xy) at(p.x, p.y, pil_top) cylinder(d = peg_d, h = 1.0);
 }
 
-// The side walls and the beam hold the cell; the front rib leaves the corners
+// Front stop for the cell, also the XIAO's back stop. It leaves the left end
 // open for the leads.
 module battery_rib()
-    at(bat_lead_gap, b2_y - rib, -weld) cube([inner_w - 2*bat_lead_gap, rib, bat.z + weld]);
+    at(bat_lead_gap, bat_rib_y, -weld) cube([inner_w - bat_lead_gap + weld, rib, bat.z + weld]);
 
 // Hangs off the front wall. Nothing faces straight down: the bars continue as
 // 45 degree webs to the wall, and the leg gap between them is open below with a
@@ -303,15 +366,16 @@ module tray() {
 
     difference() {
         union() {
-            for (i = [0:3]) boss(boss_xy[i], boss_d[i]);
+            for (i = [0:3]) boss(i);
             xiao_cradle();
             switch_cradle();
             plate_supports();
             battery_rib();
             led_bracket();
         }
-        for (p = boss_xy)
-            translate([p.x, p.y, tray_h - boss_deep]) cylinder(d = scr_pilot, h = boss_deep + 1);
+        for (i = [0:3])
+            translate([boss_xy[i].x, boss_xy[i].y, tray_h - pilot_deep[i]])
+                cylinder(d = scr_pilot, h = pilot_deep[i] + 1);
         usbc_cut();
         switch_cut();
     }
@@ -342,8 +406,8 @@ module plate() {
                     cube([1.6, slot_l, plate_t + 1.01]);
         for (p = peg_xy)
             translate([p.x, p.y, -1]) cylinder(d = peg_hole, h = plate_t + pkt_h + 2);
-        for (x = [-1, beam_x[1]])
-            translate([x, beam_y, -1]) cube([beam_x[0] + 1, inner_l, plate_t + pkt_h + 2]);
+        for (x = [-1, inner_w - notch])
+            translate([x, inner_l - notch, -1]) cube([notch + 1, notch + 1, plate_t + pkt_h + 2]);
     }
 }
 
@@ -390,20 +454,23 @@ module button_mock() {
             cube([0.6, 0.8, btn_leg]);
 }
 
+// USB-C towards +X; D0-D6 along the back edge, D0 at the USB end
 module xiao_mock() {
     cube(xiao);
-    translate([-xiao_usb_over, (xiao.y - xiao_usb.x)/2, xiao_top - xiao_usb.y])
+    translate([xiao.x + xiao_usb_over - 7.3, (xiao.y - xiao_usb.x)/2, xiao_top - xiao_usb.y])
         cube([7.3, xiao_usb.x, xiao_usb.y]);
-    translate([8, 3, xiao.z]) cube([10, 10, 1.5]);          // module can
+    translate([3, 3, xiao.z]) cube([10, 10, 1.5]);          // module can
+}
+
+module switch_mock() {
+    cube(sw_p);
+    translate([-sw_out, sw_p.y/2 - 1, sw_p.z/2 - 1.2]) cube([sw_out, 2, 2.4]);
 }
 
 module mock() {
     %at(bat_pos.x, bat_pos.y) cube(bat);
     %at(xiao_pos.x, xiao_pos.y, xiao_lift) xiao_mock();
-    %at(sw_pos.x, sw_pos.y) union() {
-        cube(sw_p);
-        translate([sw_p.x, sw_p.y/2 - 1, sw_p.z/2 - 1.2]) cube([sw_out, 2, 2.4]);
-    }
+    %at(sw_pos.x, sw_pos.y) switch_mock();
     %at(led_pos.x, led_pos.y, led_seat) union() {
         cylinder(d = led_rim, h = 1);
         cylinder(d = led_d, h = led_h - led_d/2);
