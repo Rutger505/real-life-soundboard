@@ -28,8 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextOverflow
@@ -128,15 +126,13 @@ private fun BatteryRow(reading: BatteryReading, onInfo: () -> Unit) {
     }
 }
 
-/** Nerd stats about the soundboard's battery, plus the capacity setting. */
+/** Nerd stats about the soundboard's battery. */
 @Composable
 private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val reading by viewModel.battery.collectAsState()
     val session by viewModel.batterySession.collectAsState()
-    val capacity by viewModel.batteryCapacity.collectAsState()
-    val stats = remember(session, capacity) { computeBatteryStats(session, capacity) }
-    var capacityText by remember(capacity) { mutableStateOf(capacity?.toString() ?: "") }
+    val stats = remember(session) { computeBatteryStats(session) }
 
     // Durations relative to now, so tick while the dialog is open.
     val now by produceState(System.currentTimeMillis()) {
@@ -151,7 +147,6 @@ private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> 
         DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL,
     )
     val noData = "not enough data"
-    val noCapacity = "set capacity"
     val last = session.samples.lastOrNull()
 
     AlertDialog(
@@ -166,17 +161,9 @@ private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> 
                 StatLine("Voltage", reading?.millivolts?.let { "%.3f V".format(it / 1000.0) } ?: "—")
                 StatLine("Percentage", reading?.let { "${it.percent}%" } ?: "—")
                 StatLine("Charging", reading?.let { chargingLabel(it.charging) } ?: "—")
-                StatLine("Capacity", capacity?.let { "$it mAh" } ?: "not set")
-                StatLine(
-                    "Used since charge",
-                    if (capacity == null) noCapacity
-                    else stats.mahUsed?.let { "${it.roundToInt()} mAh" } ?: noData,
-                )
-                StatLine(
-                    "Average draw",
-                    if (capacity == null) noCapacity
-                    else stats.averageMa?.let { "%.1f mA".format(it) } ?: noData,
-                )
+                StatLine("Capacity", "$BATTERY_CAPACITY_MAH mAh")
+                StatLine("Used since charge", stats.mahUsed?.let { "${it.roundToInt()} mAh" } ?: noData)
+                StatLine("Average draw", stats.averageMa?.let { "%.1f mA".format(it) } ?: noData)
                 StatLine("Drain", stats.drainPercentPerHour?.let { "%.2f %%/h".format(it) } ?: noData)
                 StatLine(
                     "Time remaining",
@@ -196,22 +183,6 @@ private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = capacityText,
-                        onValueChange = { text -> capacityText = text.filter { it.isDigit() }.take(6) },
-                        label = { Text("Capacity (mAh)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(
-                        onClick = { viewModel.setBatteryCapacity(capacityText.toIntOrNull()) },
-                        enabled = capacityText != (capacity?.toString() ?: ""),
-                    ) { Text("Save") }
-                }
             }
         },
     )

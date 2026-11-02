@@ -133,9 +133,8 @@ voltage. A voltage divider makes it visible.
   as a charge and starts a new set of samples.
 - Drain (%/h) is a least-squares fit over all samples since the last charge.
   Average current = drain × capacity / 100, time remaining = level / drain.
-  It shows "not enough data" until the samples span an hour and 3 %. The
-  battery capacity (mAh) is a setting in the stats dialog; only the mAh
-  numbers need it.
+  It shows "not enough data" until the samples span an hour and 3 %.
+  Capacity is fixed at 500 mAh (`BATTERY_CAPACITY_MAH` in `Battery.kt`).
 
 ## ESP32 firmware
 
@@ -286,7 +285,7 @@ fault logs and resets the chip.
 One parametric OpenSCAD file per board, for PLA and printed without supports:
 
 - `esp32/case/real-live-soundboard.scad`: ESP32, TP4056, buck-boost and LiPo, 56 x 87.4 x 23.2 mm.
-- `nrf52/case/real-live-soundboard.scad`: XIAO nRF52840 and LiPo, 47.6 x 51.2 x 20.9 mm.
+- `nrf52/case/real-live-soundboard.scad`: XIAO nRF52840 and LiPo, 47.6 x 51.2 x 19.9 mm.
 
 Both start with the measured parts, then derived values and `assert`s for every
 clearance they rely on. The `part` dropdown in the OpenSCAD customizer picks what to

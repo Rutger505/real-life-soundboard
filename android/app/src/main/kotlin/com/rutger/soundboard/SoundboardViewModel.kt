@@ -40,18 +40,9 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
     val battery: StateFlow<BatteryReading?> = SoundboardState.battery.asStateFlow()
     val batterySession: StateFlow<BatterySession> = SoundboardState.batterySession.asStateFlow()
 
-    private val _batteryCapacity = MutableStateFlow(
-        prefs.getInt(PREF_BATTERY_CAPACITY, 0).takeIf { it > 0 },
-    )
-    val batteryCapacity: StateFlow<Int?> = _batteryCapacity.asStateFlow()
-
-    /** Set the battery capacity in mAh; null or <= 0 clears it. */
-    fun setBatteryCapacity(mah: Int?) {
-        val value = mah?.takeIf { it > 0 }
-        prefs.edit().apply {
-            if (value == null) remove(PREF_BATTERY_CAPACITY) else putInt(PREF_BATTERY_CAPACITY, value)
-        }.apply()
-        _batteryCapacity.value = value
+    init {
+        // Capacity used to be a setting; it's fixed now.
+        prefs.edit().remove("battery_capacity_mah").apply()
     }
 
     // ---- MyInstants browser state ----

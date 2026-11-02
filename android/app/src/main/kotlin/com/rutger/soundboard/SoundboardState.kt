@@ -24,6 +24,3 @@ object SoundboardState {
     /** Samples and presses since the last charge, persisted by [BatteryHistory]. */
     val batterySession = MutableStateFlow(BatterySession())
 }
-
-/** Battery capacity in mAh, a user setting. Null until configured. */
-const val PREF_BATTERY_CAPACITY = "battery_capacity_mah"

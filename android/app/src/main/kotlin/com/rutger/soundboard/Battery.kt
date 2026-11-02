@@ -29,6 +29,9 @@ private const val MAX_SAMPLES = 5_000
 
 private const val HOUR_MS = 60 * 60 * 1000.0
 
+/** The soundboard's LiPo cell. */
+const val BATTERY_CAPACITY_MAH = 500
+
 /** Charging state byte of Battery (raw). The ESP32 always sends 0; the nRF52 reads its charger. */
 fun chargingLabel(state: Int): String = when (state) {
     0 -> "unknown"
@@ -69,7 +72,7 @@ data class BatterySession(
 
 /**
  * Derived numbers for the nerd stats. Fields depending on the drain rate are
- * null until there is enough data, the mAh ones also need a configured capacity.
+ * null until there is enough data.
  */
 data class BatteryStats(
     /** Fitted drain, % per hour. */
@@ -83,10 +86,10 @@ data class BatteryStats(
  * Least-squares fit of percent over time across the whole session, so a single
  * noisy reading doesn't swing the estimate.
  *
- * - average current (mA) = drain (%/h) x capacity / 100
+ * - average current (mA) = drain (%/h) x [BATTERY_CAPACITY_MAH] / 100
  * - time remaining = remaining % / drain (%/h)
  */
-fun computeBatteryStats(session: BatterySession, capacityMah: Int?): BatteryStats {
+fun computeBatteryStats(session: BatterySession): BatteryStats {
     val none = BatteryStats(null, null, null, null)
     val samples = session.samples
     val start = session.startMs ?: return none
@@ -114,8 +117,8 @@ fun computeBatteryStats(session: BatterySession, capacityMah: Int?): BatteryStat
     val hours = (last.timeMs - start) / HOUR_MS
     return BatteryStats(
         drainPercentPerHour = drain,
-        mahUsed = capacityMah?.let { drain * hours * it / 100.0 },
-        averageMa = capacityMah?.let { drain * it / 100.0 },
+        mahUsed = drain * hours * BATTERY_CAPACITY_MAH / 100.0,
+        averageMa = drain * BATTERY_CAPACITY_MAH / 100.0,
         emptyAtMs = emptyAtMs,
     )
 }
