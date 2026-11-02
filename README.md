@@ -286,6 +286,10 @@ One parametric OpenSCAD file per board, for PLA and printed without supports:
 
 - `esp32/case/real-live-soundboard.scad`: ESP32, TP4056, buck-boost and LiPo, 56 x 87.4 x 23.2 mm.
 - `nrf52/case/real-live-soundboard.scad`: XIAO nRF52840 and LiPo, 47.6 x 56 x 18.1 mm.
+- `esp32/case/real-live-soundboard.sc`: the ESP32 case 1:1 in [SolidCraft](https://docs.solidcraft.io/),
+  with the same parameter names (Change Parameters). Bodies Tray, Lid and Plate in
+  assembly position; the hanging bosses' arcs are 24-sided, as OpenSCAD's are.
+  Keep it in step with the `.scad` when the ESP32 case changes.
 
 Both start with the measured parts, then derived values and `assert`s for every
 clearance they rely on. The `part` dropdown in the OpenSCAD customizer picks what to
