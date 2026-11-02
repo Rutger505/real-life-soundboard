@@ -2,8 +2,9 @@
 // Origin: outside bottom-front-left corner. +Y points away from the wearer:
 // the front band (switch in the left wall, status LED, XIAO with USB-C out of
 // the right wall), then the battery band under the button plate.
-// The rear bosses and the front-right one hang from the lid line, so the cell
-// and the XIAO reach into the corners below them.
+// The front-right boss hangs from the lid line, so the XIAO reaches into the
+// corner below it. The rear bosses stand in a band behind the cell, so the
+// plate can sit right over the cell.
 
 $fa = 2; $fs = 0.4;
 
@@ -22,7 +23,7 @@ xiao_pin1 = 2.88;             // board end to the centre of D0 (7 pads at 2.54, 
 xiao_lift  = 2.0;             // BAT+/BAT- and SWD pads are on the underside: their wires leave under the board
 xiao_wire_h = 5;              // wires soldered onto the pins from the top
 xiao_back_clr = 0.4;          // D0-D6 face the cell: room for the solder on the castellations
-matrix_wire_h = 2;            // silicone button wires between the cell and the plate; 1.7 is the floor (rear ledge vs cell)
+matrix_wire_d = 1.6;          // AWG 24 silicone, soldered flat along the underside of the plate
 swb   = [8.5, 4,    3.5];
 sw_lever_h = 8;
 sw_slot_w = 5.5;
@@ -33,7 +34,7 @@ btn_nub   = 1.4;
 btn_top   = 3.9;              // base to nub tops
 btn_act_d = 3.3;
 btn_act_h = 4.6;              // base to actuator top
-btn_leg   = 3.0;
+btn_leg   = 2.2;              // base to leg tips: about 1 mm under the plate
 
 /* [Shell] */
 // Half the ESP32 case's tolerances, like the blinds remote: those printed too loose.
@@ -70,7 +71,7 @@ ledge_flat = 0.5;     // vertical face under the plate, then 45 degrees into the
 
 /* [Status LED] */
 led_from_left = 13;   // LED centre from the left wall, between the switch and the XIAO
-led_inset = 5.5;      // from the front wall
+led_inset = 5.0;      // from the front wall; the webs need room under a low lid
 led_d    = 3.0;
 led_rim  = 3.3;
 led_clr  = 0.2;
@@ -86,7 +87,7 @@ scr_pilot = 1.7;      // M2 self-tapping
 scr_clear = 2.3;
 scr_head  = 4.4;
 boss_dia  = 2*(corner_r - wall + 0.4);
-boss_dia_s = 4.4;     // slimmer over the cell, so the plate notches stay small
+boss_dia_s = 4.4;     // rear: slimmer, so the band behind the cell and the plate notches stay small
 boss_in   = corner_r - 0.5;     // centre from the outside faces, as close as the countersink allows
 boss_deep = 8;
 boss_floor = 0.4;     // under the pilot hole of a hanging boss
@@ -97,9 +98,10 @@ sw_p    = [swb.z, swb.x, swb.y];      // lever points -X
 leg_below = btn_leg - plate_t;
 
 // The XIAO band only needs the board and its wires; the battery band stacks
-// the cell, the matrix wires and the buttons.
+// the cell, the legs and wires under the plate, the plate and the buttons.
+under_plate = max(leg_below, matrix_wire_d) + 0.4;
 cav_h = max(xiao_lift + xiao_top + clr_mod + xiao_wire_h,
-            bat.z + clr_mod + matrix_wire_h + btn_leg + btn.z);
+            bat.z + clr_mod + under_plate + plate_t + btn.z);
 
 bat_pkt = [bat.x + bat_room.x + 2*fit, bat.y + bat_room.y + 2*fit];
 inner_w = bat_pkt.x;                  // the side walls hold the cell
@@ -112,10 +114,11 @@ usb_y = xiao_pos.y + xiao.y/2;
 usb_z = xiao_lift + xiao_top - xiao_usb.y/2;     // receptacle centre, cavity coordinates
 xiao_stop_x = xiao_pos.x - fit - rib;
 
-// The cell sits right behind the XIAO, up to the back wall.
+// The cell sits right behind the XIAO, up to the rear bosses.
 bat_rib_y = xiao_y1 + xiao_back_clr;
 b2_y    = bat_rib_y + rib;
-inner_l = b2_y + bat_pkt.y;
+rear_band = (boss_in - wall) + boss_dia_s/2 + fit;
+inner_l = b2_y + bat_pkt.y + rear_band;
 bat_pos = [(inner_w - bat.x)/2, b2_y + (bat_pkt.y - bat.y)/2];
 
 out_w  = inner_w + 2*wall;
@@ -131,7 +134,7 @@ boss_c   = boss_in - wall;            // centre from the inner walls
 boss_reach = [for (d = boss_d) boss_c + d/2];
 xiao_low = max(xiao_lift + xiao_top + clr_mod, usb_z + (xiao_usb.y + 1)/2);
 bat_low  = bat.z + clr_mod;
-boss_low = [0, xiao_low, bat_low, bat_low];
+boss_low = [0, xiao_low, 0, 0];
 boss_xy = [[boss_in, boss_in], [out_w-boss_in, boss_in],
            [boss_in, out_l-boss_in], [out_w-boss_in, out_l-boss_in]];
 pilot_deep = [for (i = [0:3]) boss_low[i] <= 0 ? boss_deep
@@ -149,11 +152,11 @@ plate_x0 = 0.3;          plate_x1 = inner_w - 0.3;
 plate_y1 = inner_l - 0.3;
 btn_po  = btn.x + 2*btn_hole_clr;
 pkt_ow  = btn.x + 2*btn_clr + 2*rib;
-btn_c   = [inner_w/2, plate_y1 - rib - btn_pitch - pkt_ow/2];
-plate_y0 = btn_c.y - btn_pitch - pkt_ow/2 - rib;
+corbel_y = bat_rib_y - post_t;       // corbels end at the battery rib: the plate is low over the cell
+plate_y0 = corbel_y - plate_lip;
+btn_c   = [inner_w/2, plate_y0 + rib + pkt_ow/2 + btn_pitch];
 plate_rib_x0 = ledge_d + fit;
 plate_rib_w = rib + 0.01;
-corbel_y = plate_y0 + plate_lip;
 notch   = max(boss_reach[2], boss_reach[3]) + fit;
 peg_xy  = [[ledge_d/2, corbel_y + post_t/2], [inner_w - ledge_d/2, corbel_y + post_t/2]];
 ledge_low = pil_top - ledge_flat - ledge_d;
@@ -182,13 +185,13 @@ echo(str("screws up to M2 x ", floor(scr_len)));
 
 // corners
 assert(in_corner(xiao_usb_over, xiao_pos.y));                                // XIAO PCB, front-right
-assert(in_corner(bat_pos.x, inner_l - bat_pos.y - bat.y));                  // centred cell, rear corners
 assert(sqrt(2)*(corner_r - wall - cav_r) + cav_r <= corner_r - rim_t);      // lid recess still clears the cavity corner
 assert(sqrt(2)*(corner_r - boss_in) + scr_head/2 + 0.5 <= corner_r - lid_o);   // countersink keeps 0.5 of lid corner
 // hanging bosses
 assert(boss_reach[1] <= usb_y - xiao_usb.x/2 || xiao_low >= usb_z + xiao_usb.y/2 + clr_mod);
 assert(min(pilot_deep) >= 4);
-assert(boss_low[1] + boss_reach[1] < cav_h && boss_low[2] + boss_reach[2] < cav_h);
+assert(boss_low[1] + boss_reach[1] < cav_h);
+assert(rear_band >= max(boss_reach[2], boss_reach[3]) + fit);               // rear bosses stand behind the cell
 // front band
 assert(sw_pos.y - sw_fit - rib >= boss_reach[0] + fit);                     // switch cradle clear of the front-left boss
 assert(sw_pos.y + sw_p.y + sw_fit + rib <= bat_rib_y);
@@ -201,13 +204,15 @@ assert(wall + usb_y - 6.5 >= corner_r - 0.5);                               // U
 assert(xiao_pin_free >= 2);
 assert(bat_lead_gap <= xiao_stop_x);                                         // lead gap opens into the switch side
 // plate
-assert(pil_top >= bat.z + clr_mod + leg_below);
-assert(ledge_low >= bat_low);                                                // rear ledge clears the cell
+assert(pil_top >= bat_low + leg_below + 0.3 && pil_top >= bat_low + matrix_wire_d + 0.3);
+assert(ledge_d <= rear_band - fit);                                          // rear ledge stays behind the cell
 assert(ledge_low >= xiao_low && ledge_d <= xiao_usb_over + xiao_pin1 - 0.4);   // right corbel over the XIAO, clear of D0's wire
-assert(ledge_low >= xiao_lift + xiao.z + xiao_wire_h);
+// D0's wire, going straight up, stays under the corbel's 45 degree underside
+assert(ledge_low + xiao_usb_over + xiao_pin1 - matrix_wire_d/2 >= xiao_lift + xiao.z + xiao_wire_h);
 assert(plate_y0 >= led_pos.y + led_or/2 + 1);
 assert(plate_y0 >= max(boss_reach[0], boss_reach[1]) + fit);
 assert(corbel_y + post_t <= b2_y);                                           // corbels in the front band, not over the cell
+assert(btn_c.y + btn_pitch + pkt_ow/2 + rib <= plate_y1);                   // grid on the plate
 assert(btn_c.x - btn_pitch - pkt_ow/2 >= notch);                            // grid clear of the plate's corner notches
 assert(peg_xy[0].x + peg_hole/2 + 0.4 <= plate_rib_x0);
 assert(peg_d/2 + 0.4 <= ledge_d/2);
@@ -311,7 +316,7 @@ module boss(i) {
 }
 
 // Plate supports: a corbel on each side wall in the front band, with the pegs,
-// and a ledge along the back wall over the cell.
+// and a ledge along the back wall, behind the cell.
 module plate_supports() {
     intersection() {
         union() {
