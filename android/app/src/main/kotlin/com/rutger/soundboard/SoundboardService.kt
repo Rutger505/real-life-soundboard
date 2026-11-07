@@ -190,7 +190,7 @@ class SoundboardService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Soundboard")
             .setContentText(status + batteryText + lastText)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.drawable.ic_stat_soundboard)
             .setOngoing(true)
             .setContentIntent(openIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
