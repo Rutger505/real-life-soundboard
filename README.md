@@ -135,6 +135,10 @@ voltage. A voltage divider makes it visible.
   Average current = drain × capacity / 100, time remaining = level / drain.
   It shows "not enough data" until the samples span an hour and 3 %.
   Capacity is fixed at 500 mAh (`BATTERY_CAPACITY_MAH` in `Battery.kt`).
+- **Share logs** (status bar and battery stats) shares one text file: state,
+  all battery samples since the charge, the app log and this process's logcat.
+  The app log (`AppLog.kt`, filesDir/logs, 2 × 512 KB) survives restarts and
+  crashes and has every battery value as raw bytes.
 
 ## ESP32 firmware
 

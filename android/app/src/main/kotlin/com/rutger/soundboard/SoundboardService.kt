@@ -15,6 +15,8 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 
+private const val TAG = "Service"
+
 /**
  * Foreground service that owns the BLE connection and audio playback.
  *
@@ -40,6 +42,8 @@ class SoundboardService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        AppLog.init(this)
+        AppLog.i(TAG, "Service created")
         prefs = getSharedPreferences("soundboard_prefs", Context.MODE_PRIVATE)
         audioPlayer = AudioPlayer()
         reloadSlots()
@@ -56,6 +60,7 @@ class SoundboardService : Service() {
                 onButtonPressed(index)
             },
             onConnectionStateChanged = { connected ->
+                AppLog.i(TAG, "Connected: $connected")
                 SoundboardState.bleConnected.value = connected
                 if (!connected) clearBattery()
                 updateNotification()
@@ -116,6 +121,7 @@ class SoundboardService : Service() {
     private fun commitBatteryReading() {
         // Battery Level is the one that matters; without it there's no sample.
         val percent = batteryPercent ?: return
+        AppLog.i(TAG, "Battery sample: $percent %, ${batteryMillivolts ?: "-"} mV, charging $batteryCharging")
         SoundboardState.battery.value = BatteryReading(percent, batteryMillivolts, batteryCharging)
         updateSession(
             SoundboardState.batterySession.value.withSample(
@@ -198,6 +204,7 @@ class SoundboardService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        AppLog.i(TAG, "Service destroyed")
         handler.removeCallbacksAndMessages(null)
         bleManager.disconnect()
         audioPlayer.release()

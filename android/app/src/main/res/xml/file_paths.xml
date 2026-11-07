@@ -2,4 +2,6 @@
 <paths>
     <!-- Downloaded MyInstants sounds live under filesDir/myinstants -->
     <files-path name="myinstants" path="myinstants/" />
+    <!-- Log bundles from LogShare -->
+    <cache-path name="shared" path="shared/" />
 </paths>

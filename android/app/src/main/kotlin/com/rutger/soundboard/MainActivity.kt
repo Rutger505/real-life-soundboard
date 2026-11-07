@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        AppLog.init(this)
 
         // Light UI background → use dark status-bar / nav-bar icons so the
         // system indicators (clock, battery, signal) stay visible.

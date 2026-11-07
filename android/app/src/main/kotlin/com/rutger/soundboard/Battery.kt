@@ -2,7 +2,6 @@ package com.rutger.soundboard
 
 import android.content.Context
 import android.util.AtomicFile
-import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -146,7 +145,7 @@ class BatteryHistory(context: Context) {
     } catch (e: java.io.FileNotFoundException) {
         BatterySession()
     } catch (e: Exception) {
-        Log.e(TAG, "Battery history unreadable, starting over", e)
+        AppLog.e(TAG, "Battery history unreadable, starting over", e)
         BatterySession()
     }
 
@@ -162,14 +161,14 @@ class BatteryHistory(context: Context) {
         val out = try {
             file.startWrite()
         } catch (e: IOException) {
-            Log.e(TAG, "Could not write battery history", e)
+            AppLog.e(TAG, "Could not write battery history", e)
             return
         }
         try {
             out.write(json.toString().toByteArray(Charsets.UTF_8))
             file.finishWrite(out)
         } catch (e: IOException) {
-            Log.e(TAG, "Could not write battery history", e)
+            AppLog.e(TAG, "Could not write battery history", e)
             file.failWrite(out)
         }
     }

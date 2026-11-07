@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -152,6 +153,7 @@ private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { ShareLogsButton() },
         title = { Text("Battery") },
         text = {
             Column(
@@ -213,6 +215,23 @@ private fun formatDuration(ms: Long): String {
     }
 }
 
+/** Shares state, battery samples and logs as one text file (for debugging). */
+@Composable
+private fun ShareLogsButton() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    TextButton(onClick = {
+        scope.launch {
+            try {
+                LogShare.share(context)
+            } catch (e: Exception) {
+                AppLog.e("LogShare", "Share failed", e)
+                Toast.makeText(context, "Share logs failed: $e", Toast.LENGTH_LONG).show()
+            }
+        }
+    }) { Text("Share logs") }
+}
+
 @Composable
 private fun BleStatusBar(connected: Boolean) {
     val color = if (connected) Color(0xFF4CAF50) else Color(0xFFF44336)
@@ -234,6 +253,7 @@ private fun BleStatusBar(connected: Boolean) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.weight(1f))
+        ShareLogsButton()
         Text(
             text = "v${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodySmall,

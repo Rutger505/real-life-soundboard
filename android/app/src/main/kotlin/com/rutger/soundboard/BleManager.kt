@@ -12,7 +12,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.core.content.ContextCompat
 import java.util.UUID
 
@@ -99,13 +98,13 @@ class BleManager(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            Log.d(TAG, "Found device: ${result.device.address}")
+            AppLog.i(TAG, "Found device ${result.device.address} (${result.scanRecord?.deviceName}, RSSI ${result.rssi})")
             stopScan()
             connect(result.device)
         }
 
         override fun onScanFailed(errorCode: Int) {
-            Log.e(TAG, "Scan failed: $errorCode")
+            AppLog.e(TAG, "Scan failed: $errorCode")
             scanning = false
             scheduleReconnect()
         }
@@ -118,11 +117,11 @@ class BleManager(
             handler.post {
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
-                        Log.i(TAG, "Connected to GATT server")
+                        AppLog.i(TAG, "Connected to GATT server")
                         gatt.discoverServices()
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        Log.i(TAG, "Disconnected from GATT server (status $status)")
+                        AppLog.i(TAG, "Disconnected from GATT server (status $status)")
                         gatt.close()
                         if (gatt == bluetoothGatt) {
                             bluetoothGatt = null
@@ -189,13 +188,13 @@ class BleManager(
     private fun onServicesReady(gatt: BluetoothGatt, status: Int) {
         if (gatt != bluetoothGatt) return
         if (status != BluetoothGatt.GATT_SUCCESS) {
-            Log.e(TAG, "Service discovery failed: $status")
+            AppLog.e(TAG, "Service discovery failed: $status")
             gatt.disconnect()
             return
         }
         val button = gatt.getService(SERVICE_UUID)?.getCharacteristic(CHAR_UUID)
         if (button == null) {
-            Log.e(TAG, "Button characteristic missing")
+            AppLog.e(TAG, "Button characteristic missing")
             gatt.disconnect()
             return
         }
@@ -210,7 +209,7 @@ class BleManager(
             gattOps += GattOp.Subscribe(c)
             gattOps += GattOp.Read(c)
         }
-        if (level == null && raw == null) Log.i(TAG, "No battery characteristics (old firmware)")
+        if (level == null && raw == null) AppLog.i(TAG, "No battery characteristics (old firmware)")
         runNextGattOp(gatt)
     }
 
@@ -237,7 +236,7 @@ class BleManager(
     /** Returns false when the link is being torn down and the queue must stop. */
     private fun onGattOpFailed(gatt: BluetoothGatt, op: GattOp, reason: String): Boolean {
         val uuid = op.characteristic.uuid
-        Log.e(TAG, "${op::class.simpleName} $uuid failed: $reason")
+        AppLog.e(TAG, "${op::class.simpleName} $uuid failed: $reason")
         if (op is GattOp.Subscribe && uuid == CHAR_UUID) {
             clearGattOps()
             gatt.disconnect()
@@ -255,7 +254,7 @@ class BleManager(
             if (!onGattOpFailed(gatt, op, "status $status")) return
         } else if (characteristic.uuid == CHAR_UUID) {
             // Only now is the link useful, so only now do we report "connected".
-            Log.i(TAG, "Subscribed to button notifications")
+            AppLog.i(TAG, "Subscribed to button notifications")
             reconnectAttempts = 0
             onConnectionStateChanged(true)
         }
@@ -284,19 +283,23 @@ class BleManager(
         when (uuid) {
             CHAR_UUID -> if (value.isNotEmpty()) {
                 val index = value[0].toInt() and 0xFF
-                Log.d(TAG, "BLE notification: button $index")
+                AppLog.d(TAG, "BLE notification: button $index")
                 onButtonPressed(index)
             }
             BATTERY_LEVEL_UUID -> if (value.isNotEmpty()) {
+                AppLog.i(TAG, "Battery Level: ${hex(value)} = ${value[0].toInt() and 0xFF} %")
                 onBatteryLevel((value[0].toInt() and 0xFF).coerceIn(0, 100))
             }
             // Cell mV as a little-endian u16, then the charging state.
             BATTERY_RAW_UUID -> if (value.size >= 3) {
                 val mv = (value[0].toInt() and 0xFF) or ((value[1].toInt() and 0xFF) shl 8)
+                AppLog.i(TAG, "Battery (raw): ${hex(value)} = $mv mV, charging ${value[2].toInt() and 0xFF}")
                 onBatteryRaw(mv, value[2].toInt() and 0xFF)
             }
         }
     }
+
+    private fun hex(value: ByteArray) = value.joinToString(" ") { "%02x".format(it) }
 
     private fun clearGattOps() {
         gattOps.clear()
@@ -305,7 +308,7 @@ class BleManager(
 
     fun startScan() {
         if (!hasBlePermissions(context)) {
-            Log.e(TAG, "Missing BLE permissions")
+            AppLog.e(TAG, "Missing BLE permissions")
             return
         }
         if (scanning || bluetoothGatt != null) return
@@ -325,7 +328,7 @@ class BleManager(
             .build()
         scanning = true
         scanner.startScan(listOf(filter), settings, scanCallback)
-        Log.i(TAG, "BLE scan started")
+        AppLog.i(TAG, "BLE scan started")
     }
 
     fun stopScan() {
@@ -336,14 +339,14 @@ class BleManager(
         } catch (e: IllegalStateException) {
             // Thrown while the adapter is turning off, which stops the scan anyway.
         }
-        Log.i(TAG, "BLE scan stopped")
+        AppLog.i(TAG, "BLE scan stopped")
     }
 
     private fun connect(device: BluetoothDevice) {
         bluetoothGatt?.close()
         clearGattOps()
         bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        Log.i(TAG, "Connecting to ${device.address}")
+        AppLog.i(TAG, "Connecting to ${device.address}")
     }
 
     private fun enableNotifications(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor): Boolean =
@@ -371,7 +374,7 @@ class BleManager(
         val delayMs = if (reconnectAttempts == 0) FIRST_RECONNECT_DELAY_MS else BACKOFF_RECONNECT_DELAY_MS
         reconnectAttempts++
         handler.postDelayed({
-            Log.i(TAG, "Attempting reconnect (attempt $reconnectAttempts)...")
+            AppLog.i(TAG, "Attempting reconnect (attempt $reconnectAttempts)...")
             startScan()
         }, delayMs)
     }
