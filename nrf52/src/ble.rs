@@ -60,12 +60,12 @@ const CONN_PARAMS_DELAY: Duration = Duration::from_secs(3);
 const BATTERY_PERIOD: Duration = Duration::from_secs(30 * 60);
 
 /// Presses queued while the radio is busy. A full queue drops presses rather
-/// than blocking the matrix scan; the LED still flashes.
+/// than blocking the button scan; the LED still flashes.
 const PRESS_QUEUE: usize = 16;
 
 static PRESSES: Channel<CriticalSectionRawMutex, u8, PRESS_QUEUE> = Channel::new();
 
-/// Queue a press for the phone. Called from the matrix scan.
+/// Queue a press for the phone. Called from the button scan.
 pub fn press(index: u8) {
     if PRESSES.try_send(index).is_err() {
         warn!("[ble] press queue full, dropped {}", index);

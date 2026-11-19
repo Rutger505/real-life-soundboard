@@ -7,3 +7,5 @@ target = "thumbv7em-none-eabihf"
 
 [env]
 DEFMT_LOG = "info"
+# bindgen for nrf-sdc/nrf-mpsl needs the ARM C headers (arm-none-eabi-newlib).
+BINDGEN_EXTRA_CLANG_ARGS = "--sysroot=/usr/arm-none-eabi"

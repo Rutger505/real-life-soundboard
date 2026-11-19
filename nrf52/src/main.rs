@@ -1,6 +1,6 @@
 //! nRF52840 firmware for the soundboard, on a Seeed XIAO nRF52840.
 //!
-//! A 3x3 button matrix + a status LED. A press flashes the LED and sends the
+//! Nine buttons + a status LED. A press flashes the LED and sends the
 //! button index (0..=8) as a one-byte BLE notification to the paired phone.
 //! The battery level is measured through the XIAO's own divider and served
 //! over BLE too. GATT layout and UUIDs match the ESP32 firmware, so the
@@ -78,17 +78,18 @@ async fn main(spawner: Spawner) {
     // power-down. The firmware never uses it.
     flash::power_down(p.QSPI, p.P0_21, p.P0_25, p.P0_20, p.P0_24, p.P0_22, p.P0_23);
 
-    // Button matrix, 6 wires for 9 keys, all on the XIAO's left header:
-    // rows D0-D2, columns D3-D5. Rows are pulled up; columns are open-drain.
-    let rows = [
+    // One pin per button, each switching to GND. D6 is the LED, so the
+    // buttons skip it; D10 is free.
+    let buttons = [
         Input::new(p.P0_02, Pull::Up), // D0
         Input::new(p.P0_03, Pull::Up), // D1
         Input::new(p.P0_28, Pull::Up), // D2
-    ];
-    let cols = [
-        Output::new(p.P0_29, Level::Low, OutputDrive::Standard0Disconnect1), // D3
-        Output::new(p.P0_04, Level::Low, OutputDrive::Standard0Disconnect1), // D4
-        Output::new(p.P0_05, Level::Low, OutputDrive::Standard0Disconnect1), // D5
+        Input::new(p.P0_29, Pull::Up), // D3
+        Input::new(p.P0_04, Pull::Up), // D4
+        Input::new(p.P0_05, Pull::Up), // D5
+        Input::new(p.P1_12, Pull::Up), // D7
+        Input::new(p.P1_13, Pull::Up), // D8
+        Input::new(p.P1_14, Pull::Up), // D9
     ];
     // External status LED on D6, active-high through its resistor.
     let led = Output::new(p.P1_11, Level::Low, OutputDrive::Standard);
@@ -110,7 +111,7 @@ async fn main(spawner: Spawner) {
     let mpsl = MPSL.init(unwrap!(MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg)));
     spawner.spawn(unwrap!(mpsl_task(mpsl)));
 
-    spawner.spawn(unwrap!(buttons::run(rows, cols)));
+    spawner.spawn(unwrap!(buttons::run(buttons)));
     spawner.spawn(unwrap!(led::run(led)));
 
     let sdc_p = sdc::Peripherals::new(

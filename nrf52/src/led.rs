@@ -1,6 +1,6 @@
 //! Status LED: one short flash per press.
 //!
-//! [`flash`] only raises a signal, so the matrix scan never waits for the
+//! [`flash`] only raises a signal, so the button scan never waits for the
 //! LED. A flash during a flash extends it.
 
 use embassy_futures::select::{Either, select};

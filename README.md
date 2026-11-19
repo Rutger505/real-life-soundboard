@@ -196,15 +196,25 @@ board. Rust on [Embassy](https://embassy.dev), with Nordic's SoftDevice Controll
 
 **Hardware**
 
+No matrix here: every button has its own pin, its other leg on GND (one ground
+wire daisy-chained past all nine is enough). Any combination of buttons reads
+correctly, without diodes. Button `n` sends index `n - 1`, laid out as in
+[Button matrix](#button-matrix).
+
 | Signal   | XIAO pin | nRF pin | Firmware setup                     |
 |----------|----------|---------|------------------------------------|
-| Row 0    | D0       | P0.02   | input, internal pull-up            |
-| Row 1    | D1       | P0.03   | input, internal pull-up            |
-| Row 2    | D2       | P0.28   | input, internal pull-up            |
-| Column 0 | D3       | P0.29   | open-drain output                  |
-| Column 1 | D4       | P0.04   | open-drain output                  |
-| Column 2 | D5       | P0.05   | open-drain output                  |
+| Button 1 | D0       | P0.02   | input, internal pull-up            |
+| Button 2 | D1       | P0.03   | input, internal pull-up            |
+| Button 3 | D2       | P0.28   | input, internal pull-up            |
+| Button 4 | D3       | P0.29   | input, internal pull-up            |
+| Button 5 | D4       | P0.04   | input, internal pull-up            |
+| Button 6 | D5       | P0.05   | input, internal pull-up            |
+| Button 7 | D7       | P1.12   | input, internal pull-up            |
+| Button 8 | D8       | P1.13   | input, internal pull-up            |
+| Button 9 | D9       | P1.14   | input, internal pull-up            |
 | LED+     | D6       | P1.11   | push-pull output, through the resistor |
+
+D10 (P1.15) is free.
 
 - The LiPo goes straight to the **BAT+ / BAT-** pads on the back, with the power
   switch in BAT+. No buck-boost, no TP4056 and no external divider: the XIAO has
@@ -254,8 +264,9 @@ Power the XIAO from its own USB-C or the battery, not from the Pico.
 **Build and flash**
 
 ```bash
-# Once: target and probe-rs
+# Once: target, ARM C headers (for the BLE bindings) and probe-rs
 rustup target add thumbv7em-none-eabihf
+sudo pacman -S arm-none-eabi-newlib
 curl -LsSf https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
 
 cd nrf52
@@ -279,7 +290,7 @@ fault logs and resets the chip.
 
 **TODO**
 
-- [ ] Wire the matrix, LED and battery to the XIAO.
+- [ ] Wire the buttons, LED and battery to the XIAO.
 - [ ] Flash and check presses, battery, charging state and reconnects.
 - [ ] Check the granted connection parameters in the log.
 - [ ] Measure the idle current (PPK2 on the BAT pads, probe unplugged).
