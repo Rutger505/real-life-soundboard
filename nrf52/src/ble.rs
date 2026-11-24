@@ -33,15 +33,16 @@ const DEVICE_NAME: &str = "Soundboard";
 const SERVICE_UUID: u128 = 0x12345678_1234_1234_1234_123456789012;
 
 /// Advertising right after boot or a disconnect: the phone is usually close
-/// and reconnects inside a second.
-const FAST_ADV_MIN: Duration = Duration::from_millis(100);
-const FAST_ADV_MAX: Duration = Duration::from_millis(200);
+/// and reconnects within a few seconds.
+const FAST_ADV_MIN: Duration = Duration::from_millis(1000);
+const FAST_ADV_MAX: Duration = Duration::from_millis(1000);
 const FAST_ADV_FOR: Duration = Duration::from_secs(30);
 
-/// Advertising once nobody connected for a while (phone away or off). Cuts
-/// the advertising draw by ~7x; reconnecting then takes a few seconds.
-const SLOW_ADV_MIN: Duration = Duration::from_millis(1000);
-const SLOW_ADV_MAX: Duration = Duration::from_millis(1200);
+/// Advertising once nobody connected for a while (phone away or off).
+/// Reconnecting then takes up to tens of seconds, depending on the phone's
+/// scan duty cycle.
+const SLOW_ADV_MIN: Duration = Duration::from_millis(5000);
+const SLOW_ADV_MAX: Duration = Duration::from_millis(5000);
 
 /// Low-power connection params. The interval bounds how long a press waits
 /// for the radio; the latency lets the radio skip that many events while

@@ -1205,7 +1205,7 @@ checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "soundboard-nrf52"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",

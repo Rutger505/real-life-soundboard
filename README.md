@@ -232,8 +232,8 @@ D10 (P1.15) is free.
 - The firmware asks the phone for a 30-45 ms interval with peripheral latency 32:
   presses still go out at the next interval, but the idle radio only wakes about
   every 1.5 s. The boot log shows what the phone granted.
-- Advertising is fast (100-200 ms) for 30 s after boot or a disconnect, then slow
-  (1-1.2 s) until a phone connects.
+- Advertising is every 1 s for 30 s after boot or a disconnect, then every 5 s
+  until a phone connects.
 - The XIAO's battery divider stays enabled (P0.14 low), ~2.8 µA. Disabling it
   would put P0.31 at its absolute maximum voltage; Seeed says to leave it low.
 - A connected probe keeps the debug logic powered (~mA). Measure with the probe
