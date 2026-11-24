@@ -78,11 +78,12 @@ verify() { # remote-name expected-sha256
 
 run mcli cp --quiet "$APK" "$DEST/$versioned" >/dev/null
 verify "$versioned" "$sha"
-run mcli cp --quiet --disable-multipart "$DEST/$versioned" "$DEST/$NAME.apk" >/dev/null
+# Stable names get no-cache: without it the phone's browser once installed a stale cached APK.
+run mcli cp --quiet --disable-multipart --attr "Cache-Control=no-cache" "$DEST/$versioned" "$DEST/$NAME.apk" >/dev/null
 verify "$NAME.apk" "$sha"
 printf '{"versionCode": %s, "versionName": "%s", "apk": "%s", "sha256": "%s", "size": %s}\n' \
   "$code" "$name" "$versioned" "$sha" "$size" >"$TMP/update.json"
-run mcli cp --quiet "$TMP/update.json" "$DEST/update.json" >/dev/null
+run mcli cp --quiet --attr "Cache-Control=no-cache" "$TMP/update.json" "$DEST/update.json" >/dev/null
 verify update.json "$(sha256sum "$TMP/update.json" | cut -d' ' -f1)"
 
 # Newest $KEEP stay, so a phone mid-download still finds its file.
