@@ -1,41 +1,54 @@
 package com.rutger.soundboard
 
+import android.content.Context
 import android.net.Uri
 import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+private val KeyShape = RoundedCornerShape(14.dp)
+private val PillShape = RoundedCornerShape(50)
 
 @Composable
 fun SoundboardScreen(viewModel: SoundboardViewModel) {
@@ -45,46 +58,52 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
     val battery by viewModel.battery.collectAsState()
 
     var showBatteryStats by remember { mutableStateOf(false) }
-
-    // Which slot (if any) is picking a sound from MyInstants.
+    var editingSlot by remember { mutableStateOf<Int?>(null) }
     var browserSlot by remember { mutableStateOf<Int?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            // Keep all content inside the safe area, so nothing lands under the
-            // camera cutout, status bar or nav bar.
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(16.dp),
-        // Center the grid vertically in the available (safe) space.
-        verticalArrangement = Arrangement.Center,
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth(),
+        Header(
+            connected = bleConnected,
+            battery = battery,
+            onBattery = { showBatteryStats = true },
+        )
+
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
         ) {
-            gridItems(sounds, key = { it.id }) { entry ->
-                val index = entry.id
-                SoundButton(
-                    entry = entry,
-                    isActive = activeButton == index,
-                    onFileSelected = { uri -> viewModel.setAudioFile(index, uri) },
-                    onBrowseMyInstants = { browserSlot = index },
-                    onPress = { viewModel.onButtonPressed(index) },
-                    onClear = { viewModel.clearSlot(index) },
-                )
-            }
+            Keypad(
+                sounds = sounds,
+                activeButton = activeButton,
+                onPlay = viewModel::onButtonPressed,
+                onEdit = { editingSlot = it },
+            )
+            Text(
+                text = "Tap a key to play it, hold to change its sound",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            )
         }
+    }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Hidden on firmware without battery characteristics.
-        battery?.let { BatteryRow(it, onInfo = { showBatteryStats = true }) }
-
-        // Connection status sits just under the centered grid.
-        BleStatusBar(connected = bleConnected)
+    editingSlot?.let { slot ->
+        sounds.firstOrNull { it.id == slot }?.let { entry ->
+            KeySheet(
+                entry = entry,
+                onDismiss = { editingSlot = null },
+                onFileSelected = { uri -> viewModel.setAudioFile(slot, uri) },
+                onBrowseMyInstants = { browserSlot = slot },
+                onPlay = { viewModel.onButtonPressed(slot) },
+                onClear = { viewModel.clearSlot(slot) },
+            )
+        }
     }
 
     if (showBatteryStats) {
@@ -104,33 +123,264 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
 }
 
 @Composable
-private fun BatteryRow(reading: BatteryReading, onInfo: () -> Unit) {
-    val low = reading.percent < LOW_BATTERY_PERCENT
-    val color = if (low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+private fun Header(connected: Boolean, battery: BatteryReading?, onBattery: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
     ) {
         Text(
-            text = buildString {
-                append("Battery ${reading.percent}%")
-                reading.millivolts?.let { append(" · %.2f V".format(it / 1000.0)) }
-                if (low) append(" · low, charge soon")
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = color,
+            text = "Soundboard",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
         )
-        Spacer(modifier = Modifier.weight(1f))
-        IconButton(onClick = onInfo) {
-            Icon(Icons.Outlined.Info, contentDescription = "Battery stats")
+        ConnectionPill(connected)
+        battery?.let { BatteryPill(it, onClick = onBattery) }
+        OverflowMenu()
+    }
+}
+
+@Composable
+private fun Pill(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier
+            .clip(PillShape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, PillShape)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun ConnectionPill(connected: Boolean) {
+    val status = LocalStatusColors.current
+    Pill {
+        Box(
+            Modifier
+                .size(8.dp)
+                .background(if (connected) status.ok else status.searching, CircleShape),
+        )
+        Text(
+            text = if (connected) "Connected" else "Searching",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun BatteryPill(reading: BatteryReading, onClick: () -> Unit) {
+    val low = reading.percent < LOW_BATTERY_PERCENT
+    Pill(modifier = Modifier.clickable(onClick = onClick)) {
+        Text(
+            text = if (low) "${reading.percent}% · charge" else "${reading.percent}%",
+            style = MaterialTheme.typography.labelMedium,
+            fontFamily = DataFont,
+            color = if (low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun OverflowMenu() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Outlined.MoreVert, contentDescription = "More")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Share logs") },
+                leadingIcon = { Icon(Icons.Outlined.Share, contentDescription = null) },
+                onClick = {
+                    open = false
+                    scope.launch { shareLogs(context) }
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        "Version ${BuildConfig.VERSION_NAME}",
+                        fontFamily = DataFont,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+                enabled = false,
+                onClick = {},
+            )
         }
     }
+}
+
+private suspend fun shareLogs(context: Context) {
+    try {
+        LogShare.share(context)
+    } catch (e: Exception) {
+        AppLog.e("LogShare", "Share failed", e)
+        Toast.makeText(context, "Couldn't share logs: $e", Toast.LENGTH_LONG).show()
+    }
+}
+
+@Composable
+private fun Keypad(
+    sounds: List<SoundEntry>,
+    activeButton: Int?,
+    onPlay: (Int) -> Unit,
+    onEdit: (Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        sounds.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { entry ->
+                    Key(
+                        entry = entry,
+                        lit = activeButton == entry.id,
+                        onTap = { if (entry.uri != null) onPlay(entry.id) else onEdit(entry.id) },
+                        onHold = { onEdit(entry.id) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Key(
+    entry: SoundEntry,
+    lit: Boolean,
+    onTap: () -> Unit,
+    onHold: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val empty = entry.uri == null
+    val fill by animateColorAsState(
+        targetValue = when {
+            lit -> colors.primary
+            empty -> Color.Transparent
+            else -> colors.surfaceVariant
+        },
+        label = "key_fill",
+    )
+    val content = if (lit) colors.onPrimary else colors.onSurface
+    val scale by animateFloatAsState(if (lit) 0.96f else 1f, label = "key_press")
+
+    Column(
+        modifier = modifier
+            .aspectRatio(0.9f)
+            .scale(scale)
+            .clip(KeyShape)
+            .background(fill)
+            .border(1.dp, if (lit) colors.primary else colors.outlineVariant, KeyShape)
+            .combinedClickable(onClick = onTap, onLongClick = onHold)
+            .padding(10.dp),
+    ) {
+        Text(
+            text = "${buttonLabel(entry.id)}",
+            fontFamily = DataFont,
+            fontSize = 13.sp,
+            color = if (lit) colors.onPrimary else colors.onSurfaceVariant,
+        )
+        Spacer(Modifier.weight(1f))
+        if (empty) {
+            Icon(
+                Icons.Outlined.Add,
+                contentDescription = "Add sound",
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        } else {
+            Text(
+                text = entry.displayName ?: "Sound",
+                style = MaterialTheme.typography.labelLarge,
+                lineHeight = 16.sp,
+                color = content,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KeySheet(
+    entry: SoundEntry,
+    onDismiss: () -> Unit,
+    onFileSelected: (Uri) -> Unit,
+    onBrowseMyInstants: () -> Unit,
+    onPlay: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(onFileSelected)
+        onDismiss()
+    }
+    val hasAudio = entry.uri != null
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 24.dp)) {
+            Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                Text(
+                    "Key ${buttonLabel(entry.id)}",
+                    fontFamily = DataFont,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    entry.displayName ?: "No sound yet",
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            if (hasAudio) {
+                SheetAction(Icons.Outlined.PlayArrow, "Play") { onPlay() }
+            }
+            SheetAction(Icons.Outlined.Search, "Find on MyInstants") {
+                onBrowseMyInstants()
+                onDismiss()
+            }
+            SheetAction(Icons.Outlined.Add, "Choose audio file") { launcher.launch(arrayOf("audio/*")) }
+            if (hasAudio) {
+                SheetAction(Icons.Outlined.Delete, "Remove sound", destructive = true) {
+                    onClear()
+                    onDismiss()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetAction(
+    icon: ImageVector,
+    label: String,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    ListItem(
+        headlineContent = { Text(label, color = color) },
+        leadingContent = { Icon(icon, contentDescription = null, tint = color) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 8.dp),
+    )
 }
 
 /** Nerd stats about the soundboard's battery. */
 @Composable
 private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val reading by viewModel.battery.collectAsState()
     val session by viewModel.batterySession.collectAsState()
     val stats = remember(session) { computeBatteryStats(session) }
@@ -153,11 +403,11 @@ private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-        dismissButton = { ShareLogsButton() },
+        dismissButton = { TextButton(onClick = { scope.launch { shareLogs(context) } }) { Text("Share logs") } },
         title = { Text("Battery") },
         text = {
             Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
                 StatLine("Voltage", reading?.millivolts?.let { "%.3f V".format(it / 1000.0) } ?: "—")
@@ -184,7 +434,6 @@ private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> 
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-
             }
         },
     )
@@ -192,14 +441,14 @@ private fun BatteryStatsDialog(viewModel: SoundboardViewModel, onDismiss: () -> 
 
 @Composable
 private fun StatLine(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontFamily = DataFont, textAlign = TextAlign.End)
     }
 }
 
@@ -212,126 +461,6 @@ private fun formatDuration(ms: Long): String {
         days > 0 -> "$days d ${hours % 24} h"
         hours > 0 -> "$hours h ${minutes % 60} min"
         else -> "$minutes min"
-    }
-}
-
-/** Shares state, battery samples and logs as one text file (for debugging). */
-@Composable
-private fun ShareLogsButton() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    TextButton(onClick = {
-        scope.launch {
-            try {
-                LogShare.share(context)
-            } catch (e: Exception) {
-                AppLog.e("LogShare", "Share failed", e)
-                Toast.makeText(context, "Share logs failed: $e", Toast.LENGTH_LONG).show()
-            }
-        }
-    }) { Text("Share logs") }
-}
-
-@Composable
-private fun BleStatusBar(connected: Boolean) {
-    val color = if (connected) Color(0xFF4CAF50) else Color(0xFFF44336)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .background(color, shape = RoundedCornerShape(5.dp)),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = if (connected) "Soundboard connected" else "Scanning for soundboard…",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        ShareLogsButton()
-        Text(
-            text = "v${BuildConfig.VERSION_NAME}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-fun SoundButton(
-    entry: SoundEntry,
-    isActive: Boolean,
-    onFileSelected: (Uri) -> Unit,
-    onBrowseMyInstants: () -> Unit,
-    onPress: () -> Unit,
-    onClear: () -> Unit,
-) {
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-        onResult = { uri -> uri?.let { onFileSelected(it) } },
-    )
-
-    val bgColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.surfaceVariant,
-        label = "button_color",
-    )
-
-    val hasAudio = entry.uri != null
-    val contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary
-    else MaterialTheme.colorScheme.onSurfaceVariant
-
-    // Plain vertical flow: every child takes its own natural size, so the
-    // number, the (possibly multi-line) sound name and both button rows are
-    // always fully visible and the tile grows to fit its content.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(bgColor, shape = RoundedCornerShape(12.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape = RoundedCornerShape(12.dp))
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = "${buttonLabel(entry.id)}",
-            fontSize = 20.sp,
-            color = contentColor,
-        )
-
-        Text(
-            text = entry.displayName ?: "—",
-            style = MaterialTheme.typography.bodySmall,
-            color = contentColor,
-        )
-
-        // Source row.
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            SlotAction("📂") { launcher.launch(arrayOf("audio/*")) }
-            SlotAction("🔍", onClick = onBrowseMyInstants)
-        }
-
-        // Playback row: always shown, disabled when the slot is empty.
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            SlotAction("▶", enabled = hasAudio, onClick = onPress)
-            SlotAction("🗑", enabled = hasAudio, onClick = onClear)
-        }
-    }
-}
-
-@Composable
-private fun SlotAction(label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        enabled = enabled,
-        contentPadding = PaddingValues(horizontal = 4.dp),
-    ) {
-        Text(label, fontSize = 12.sp)
     }
 }
 
@@ -351,31 +480,35 @@ fun MyInstantsBrowser(
     val downloadingSlot by viewModel.miDownloadingSlot.collectAsState()
     var query by remember { mutableStateOf("") }
 
-    // Load trending as soon as the browser opens.
     LaunchedEffect(Unit) { viewModel.loadTrending() }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
-            shape = RoundedCornerShape(16.dp),
-            tonalElevation = 4.dp,
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        text = "MyInstants → slot ${buttonLabel(slot)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Key ${buttonLabel(slot)}",
+                            fontFamily = DataFont,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text("MyInstants", style = MaterialTheme.typography.titleLarge)
+                    }
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = query,
@@ -383,19 +516,26 @@ fun MyInstantsBrowser(
                         query = it
                         viewModel.searchMyInstants(it)
                     },
-                    label = { Text("Search sounds") },
+                    placeholder = { Text("Search sounds") },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                     singleLine = true,
+                    shape = PillShape,
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = if (query.isBlank()) "Trending" else "Results",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+                )
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     when {
                         downloadingSlot == slot -> LoadingCenter("Downloading…")
                         loading -> LoadingCenter("Loading…")
                         results.isEmpty() -> Text(
-                            "No results",
+                            "No sounds found. Try another search.",
                             modifier = Modifier.align(Alignment.Center),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -407,15 +547,15 @@ fun MyInstantsBrowser(
                                         viewModel.assignFromMyInstants(slot, sound) { ok ->
                                             Toast.makeText(
                                                 context,
-                                                if (ok) "Added \"${sound.title}\" to slot ${buttonLabel(slot)}"
-                                                else "Download failed",
+                                                if (ok) "Added \"${sound.title}\" to key ${buttonLabel(slot)}"
+                                                else "Download failed. Check your connection and try again.",
                                                 Toast.LENGTH_SHORT,
                                             ).show()
                                             if (ok) onDismiss()
                                         }
                                     },
                                 )
-                                HorizontalDivider()
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             }
                         }
                     }
@@ -447,15 +587,17 @@ private fun SoundResultRow(sound: MyInstantSound, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
     ) {
-        Text("🔊", fontSize = 18.sp)
-        Spacer(Modifier.width(12.dp))
         Text(
             text = sound.title.ifBlank { sound.id },
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Text("＋", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
+        Icon(
+            Icons.Outlined.Add,
+            contentDescription = "Add to key",
+            tint = MaterialTheme.colorScheme.primary,
+        )
     }
 }

@@ -8,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.core.view.WindowCompat
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 
@@ -25,19 +24,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AppLog.init(this)
 
-        // Light UI background → use dark status-bar / nav-bar icons so the
-        // system indicators (clock, battery, signal) stay visible.
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
-        }
-
         requestBlePermissions()
         SoundboardService.start(this)
 
         setContent {
-            MaterialTheme {
-                Surface {
+            SoundboardTheme {
+                Surface(color = MaterialTheme.colorScheme.background) {
                     SoundboardScreen(viewModel = viewModel)
                 }
             }

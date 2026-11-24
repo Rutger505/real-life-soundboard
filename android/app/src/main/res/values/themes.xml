@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Soundboard" parent="android:Theme.Material.Light.NoActionBar" />
+    <color name="window_background">#F1F0F7</color>
+    <style name="Theme.Soundboard" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
 </resources>
