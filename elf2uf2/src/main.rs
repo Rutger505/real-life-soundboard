@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::io::Write;
 use std::{env, fs};
 
 use elf2uf2::{NRF52840_FAMILY, find_bootloader_drive, load_segments, to_uf2};
@@ -35,7 +36,10 @@ fn convert(elf_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     match find_bootloader_drive() {
         Some(drive) => {
             let target = drive.join(uf2_path.file_name().unwrap());
-            fs::write(&target, &uf2)?;
+            // Without the sync the copy waits in the page cache and the board never flashes.
+            let mut file = fs::File::create(&target)?;
+            file.write_all(&uf2)?;
+            file.sync_all()?;
             println!("Flashed through {}", drive.display());
         }
         None => println!(
