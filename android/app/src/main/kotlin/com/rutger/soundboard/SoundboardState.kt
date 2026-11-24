@@ -16,6 +16,9 @@ object SoundboardState {
     val activeButton = MutableStateFlow<Int?>(null)
     val lastButton = MutableStateFlow<Int?>(null)
 
+    /** Key whose sound is playing right now, null when silent. */
+    val playingButton = MutableStateFlow<Int?>(null)
+
     /** elapsedRealtime of the last key press, 0 = none: the updater doesn't install mid-use. */
     val lastPressAt = MutableStateFlow(0L)
 

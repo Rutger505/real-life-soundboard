@@ -7,12 +7,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,7 +22,6 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
@@ -33,7 +29,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +52,7 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
     val sounds by viewModel.sounds.collectAsState()
     val bleConnected by viewModel.bleConnected.collectAsState()
     val activeButton by viewModel.activeButton.collectAsState()
+    val playingButton by viewModel.playingButton.collectAsState()
     val battery by viewModel.battery.collectAsState()
 
     var showBatteryStats by remember { mutableStateOf(false) }
@@ -83,15 +79,10 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
             Keypad(
                 sounds = sounds,
                 activeButton = activeButton,
+                playingButton = playingButton,
                 onPlay = viewModel::onButtonPressed,
+                onStop = viewModel::stopPlayback,
                 onEdit = { editingSlot = it },
-            )
-            Text(
-                text = "Tap a key to play it, hold to change its sound",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             )
         }
     }
@@ -103,7 +94,6 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
                 onDismiss = { editingSlot = null },
                 onFileSelected = { uri -> viewModel.setAudioFile(slot, uri) },
                 onBrowseMyInstants = { browserSlot = slot },
-                onPlay = { viewModel.onButtonPressed(slot) },
                 onClear = { viewModel.clearSlot(slot) },
             )
         }
@@ -192,7 +182,6 @@ private fun OverflowMenu() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
-    val update by Updater.status.collectAsState()
     Box {
         IconButton(onClick = { open = true }) {
             Icon(Icons.Outlined.MoreVert, contentDescription = "More")
@@ -209,28 +198,15 @@ private fun OverflowMenu() {
             DropdownMenuItem(
                 text = {
                     Text(
-                        versionLine(update),
+                        "v${BuildConfig.VERSION_CODE}",
                         fontFamily = DataFont,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 },
-                leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
                 onClick = { Updater.checkNow() },
             )
         }
     }
-}
-
-private fun versionLine(status: Updater.Status): String {
-    val newer = Updater.available(status)
-    val outcome = when {
-        newer != null -> "${newer.versionName} available"
-        status is Updater.Status.Checking -> "checking…"
-        status is Updater.Status.UpToDate -> "up to date"
-        status is Updater.Status.Failed -> "check failed"
-        else -> null
-    }
-    return listOfNotNull(BuildConfig.VERSION_NAME, outcome).joinToString(" · ")
 }
 
 /** Shown while a newer version exists; failures show the real error. */
@@ -283,19 +259,26 @@ private suspend fun shareLogs(context: Context) {
 private fun Keypad(
     sounds: List<SoundEntry>,
     activeButton: Int?,
+    playingButton: Int?,
     onPlay: (Int) -> Unit,
+    onStop: () -> Unit,
     onEdit: (Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         sounds.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.height(IntrinsicSize.Min),
+            ) {
                 row.forEach { entry ->
                     Key(
                         entry = entry,
-                        lit = activeButton == entry.id,
-                        onTap = { if (entry.uri != null) onPlay(entry.id) else onEdit(entry.id) },
-                        onHold = { onEdit(entry.id) },
-                        modifier = Modifier.weight(1f),
+                        lit = activeButton == entry.id || playingButton == entry.id,
+                        playing = playingButton == entry.id,
+                        onPlay = { onPlay(entry.id) },
+                        onStop = onStop,
+                        onEdit = { onEdit(entry.id) },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
             }
@@ -303,13 +286,14 @@ private fun Keypad(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Key(
     entry: SoundEntry,
     lit: Boolean,
-    onTap: () -> Unit,
-    onHold: () -> Unit,
+    playing: Boolean,
+    onPlay: () -> Unit,
+    onStop: () -> Unit,
+    onEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -323,43 +307,76 @@ private fun Key(
         label = "key_fill",
     )
     val content = if (lit) colors.onPrimary else colors.onSurface
-    val scale by animateFloatAsState(if (lit) 0.96f else 1f, label = "key_press")
+    val muted = if (lit) colors.onPrimary else colors.onSurfaceVariant
 
     Column(
         modifier = modifier
-            .aspectRatio(0.9f)
-            .scale(scale)
             .clip(KeyShape)
             .background(fill)
             .border(1.dp, if (lit) colors.primary else colors.outlineVariant, KeyShape)
-            .combinedClickable(onClick = onTap, onLongClick = onHold)
-            .padding(10.dp),
+            .clickable(onClick = if (empty) onEdit else onPlay)
+            .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 10.dp),
     ) {
-        Text(
-            text = "${buttonLabel(entry.id)}",
-            fontFamily = DataFont,
-            fontSize = 13.sp,
-            color = if (lit) colors.onPrimary else colors.onSurfaceVariant,
-        )
-        Spacer(Modifier.weight(1f))
-        if (empty) {
-            Icon(
-                Icons.Outlined.Add,
-                contentDescription = "Add sound",
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
-        } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = entry.displayName ?: "Sound",
-                style = MaterialTheme.typography.labelLarge,
-                lineHeight = 16.sp,
-                color = content,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
+                text = "${buttonLabel(entry.id)}",
+                fontFamily = DataFont,
+                fontSize = 13.sp,
+                color = muted,
+                modifier = Modifier.weight(1f),
             )
+            if (!empty) {
+                KeyIconButton(onClick = if (playing) onStop else onPlay) {
+                    if (playing) StopGlyph(muted)
+                    else Icon(Icons.Outlined.PlayArrow, contentDescription = "Play", tint = muted)
+                }
+            }
+            KeyIconButton(onClick = onEdit) {
+                Icon(Icons.Outlined.MoreVert, contentDescription = "Change sound", tint = muted)
+            }
+        }
+        Box(Modifier.padding(end = 8.dp)) {
+            if (empty) {
+                Icon(
+                    Icons.Outlined.Add,
+                    contentDescription = "Add sound",
+                    tint = muted,
+                    modifier = Modifier.size(20.dp),
+                )
+            } else {
+                Text(
+                    text = entry.displayName ?: "Sound",
+                    style = MaterialTheme.typography.labelLarge,
+                    lineHeight = 16.sp,
+                    color = content,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun KeyIconButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+    ) {
+        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { content() }
+    }
+}
+
+@Composable
+private fun StopGlyph(color: Color) {
+    Box(
+        Modifier
+            .size(12.dp)
+            .background(color, RoundedCornerShape(2.dp)),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -369,7 +386,6 @@ private fun KeySheet(
     onDismiss: () -> Unit,
     onFileSelected: (Uri) -> Unit,
     onBrowseMyInstants: () -> Unit,
-    onPlay: () -> Unit,
     onClear: () -> Unit,
 ) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -395,9 +411,6 @@ private fun KeySheet(
                 )
             }
             Spacer(Modifier.height(8.dp))
-            if (hasAudio) {
-                SheetAction(Icons.Outlined.PlayArrow, "Play") { onPlay() }
-            }
             SheetAction(Icons.Outlined.Search, "Find on MyInstants") {
                 onBrowseMyInstants()
                 onDismiss()

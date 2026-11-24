@@ -85,6 +85,7 @@ class SoundboardService : Service() {
                 val index = intent.getIntExtra(EXTRA_INDEX, -1)
                 onButtonPressed(index)
             }
+            ACTION_STOP -> audioPlayer.stop()
             ACTION_RELOAD -> reloadSlots()
             // Opening the app lands here, so it doubles as a manual retry.
             null -> bleManager.startScan()
@@ -218,6 +219,7 @@ class SoundboardService : Service() {
         private const val CHANNEL_ID = "soundboard_service"
         private const val NOTIF_ID = 1
         const val ACTION_PLAY = "com.rutger.soundboard.action.PLAY"
+        const val ACTION_STOP = "com.rutger.soundboard.action.STOP"
         const val ACTION_RELOAD = "com.rutger.soundboard.action.RELOAD"
         const val EXTRA_INDEX = "index"
         private const val BATTERY_COMMIT_DELAY_MS = 300L
@@ -239,6 +241,12 @@ class SoundboardService : Service() {
             send(context, Intent(context, SoundboardService::class.java).apply {
                 action = ACTION_PLAY
                 putExtra(EXTRA_INDEX, index)
+            })
+        }
+
+        fun stop(context: Context) {
+            send(context, Intent(context, SoundboardService::class.java).apply {
+                action = ACTION_STOP
             })
         }
 

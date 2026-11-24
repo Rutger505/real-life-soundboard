@@ -71,10 +71,19 @@ class AudioPlayer {
         slots.remove(index)?.player?.let {
             if (it == current) {
                 current = null
+                SoundboardState.playingButton.value = null
                 restoreMediaVolume()
             }
             it.release()
         }
+    }
+
+    @Synchronized
+    fun stop() {
+        current?.let { if (it.isPlaying) it.pause() }
+        current = null
+        SoundboardState.playingButton.value = null
+        restoreMediaVolume()
     }
 
     /** Play slot [index] from the start. Instant when preloaded. */
@@ -95,6 +104,7 @@ class AudioPlayer {
         slot.player.seekTo(0)
         slot.player.start()
         current = slot.player
+        SoundboardState.playingButton.value = index
     }
 
     /**
@@ -124,7 +134,11 @@ class AudioPlayer {
     // same slot completes only once, so only the current player's end counts.
     @Synchronized
     private fun onPlaybackFinished(player: MediaPlayer) {
-        if (player == current) restoreMediaVolume()
+        if (player == current) {
+            current = null
+            SoundboardState.playingButton.value = null
+            restoreMediaVolume()
+        }
     }
 
     /** Put STREAM_MUSIC back to the level the user had before we raised it. */
@@ -147,5 +161,6 @@ class AudioPlayer {
         slots.values.forEach { it.player.release() }
         slots.clear()
         current = null
+        SoundboardState.playingButton.value = null
     }
 }

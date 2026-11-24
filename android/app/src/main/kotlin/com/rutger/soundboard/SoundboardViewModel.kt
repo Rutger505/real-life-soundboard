@@ -37,6 +37,7 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
     // Connection + playback state come straight from the service.
     val bleConnected: StateFlow<Boolean> = SoundboardState.bleConnected.asStateFlow()
     val activeButton: StateFlow<Int?> = SoundboardState.activeButton.asStateFlow()
+    val playingButton: StateFlow<Int?> = SoundboardState.playingButton.asStateFlow()
     val battery: StateFlow<BatteryReading?> = SoundboardState.battery.asStateFlow()
     val batterySession: StateFlow<BatterySession> = SoundboardState.batterySession.asStateFlow()
 
@@ -148,6 +149,10 @@ class SoundboardViewModel(application: Application) : AndroidViewModel(applicati
     fun onButtonPressed(index: Int) {
         if (index !in BUTTON_IDS) return
         SoundboardService.play(getApplication(), index)
+    }
+
+    fun stopPlayback() {
+        SoundboardService.stop(getApplication())
     }
 
     private fun loadEntry(id: Int): SoundEntry {
