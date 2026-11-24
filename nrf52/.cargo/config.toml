@@ -1,9 +1,18 @@
-[target.thumbv7em-none-eabihf]
-# Flashes through the SWD probe and streams the defmt log over RTT.
-runner = "probe-rs run --chip nRF52840_xxAA"
+[alias]
+# Flashes through a debug probe instead of the UF2 bootloader.
+probe = [
+  "run",
+  "--config",
+  "target.thumbv7em-none-eabihf.runner = 'probe-rs run --chip nRF52840_xxAA'",
+]
 
 [build]
 target = "thumbv7em-none-eabihf"
+
+# Writes soundboard-nrf52.uf2 next to the firmware, and copies it onto the UF2
+# bootloader drive when that is mounted, which flashes the board.
+[target.thumbv7em-none-eabihf]
+runner = "cargo run --quiet --release --manifest-path ../elf2uf2/Cargo.toml --target host-tuple --"
 
 [env]
 DEFMT_LOG = "info"

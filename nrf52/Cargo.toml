@@ -1,6 +1,6 @@
 [package]
 name = "soundboard-nrf52"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 
@@ -23,7 +23,8 @@ trouble-host = { version = "0.8", default-features = false, features = ["defmt",
 defmt = "1.0"
 defmt-rtt = "1.0"
 cortex-m = "0.7.6"
-cortex-m-rt = "0.7"
+# Vectors straight to the firmware: MPSL's radio interrupts skip the MBR/SoftDevice forwarding.
+cortex-m-rt = { version = "0.7", features = ["set-vtor"] }
 static_cell = "2"
 
 [profile.release]

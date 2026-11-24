@@ -1,0 +1,11 @@
+[package]
+edition      = "2024"
+license      = "MIT"
+name         = "elf2uf2"
+rust-version = "1.88"
+version      = "0.1.0"
+
+[workspace]
+
+[dependencies]
+object = { version = "0.40.0", default-features = false, features = ["elf", "read_core", "std"] }

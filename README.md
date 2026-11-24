@@ -247,11 +247,31 @@ D10 (P1.15) is free.
 - Charging state from the charger's status pin (P0.17): Battery (raw) reports
   1 = charging, 2 = not charging.
 
-**Debug probe**
+**Build and flash**
 
-Flashing and logs go over SWD with [probe-rs](https://probe.rs). A Raspberry Pi
-Pico (H) with the [debugprobe](https://github.com/raspberrypi/debugprobe)
-firmware works: hold BOOTSEL, plug it in, copy `debugprobe_on_pico.uf2` onto it.
+```bash
+# Once: target and ARM C headers (for the BLE bindings)
+rustup target add thumbv7em-none-eabihf
+sudo pacman -S arm-none-eabi-newlib
+
+cd nrf52
+# Double tap reset on the XIAO so its UF2 drive mounts, then:
+cargo run --release
+```
+
+The cargo runner (`elf2uf2/`) writes `soundboard-nrf52.uf2` next to the
+firmware and copies it onto the mounted UF2 drive, which flashes the board.
+Without a mounted drive it only writes the file, to drag onto the drive by hand.
+The firmware is linked behind Seeed's bootloader and the SoftDevice S140 v7.3.0
+slot (`nrf52/memory.x`, from 0x27000); the SoftDevice stays disabled, the BLE
+controller is linked into the firmware.
+
+**Debug probe** (optional)
+
+`cargo probe --release` flashes over SWD with [probe-rs](https://probe.rs) and
+streams the log. A Raspberry Pi Pico (H) with the
+[debugprobe](https://github.com/raspberrypi/debugprobe) firmware works: hold
+BOOTSEL, plug it in, copy `debugprobe_on_pico.uf2` onto it.
 
 | Pico      | XIAO (pads on the back) |
 |-----------|-------------------------|
@@ -259,32 +279,14 @@ firmware works: hold BOOTSEL, plug it in, copy `debugprobe_on_pico.uf2` onto it.
 | GP3       | SWDIO                   |
 | GND       | GND                     |
 
-Power the XIAO from its own USB-C or the battery, not from the Pico.
-
-**Build and flash**
-
-```bash
-# Once: target, ARM C headers (for the BLE bindings) and probe-rs
-rustup target add thumbv7em-none-eabihf
-sudo pacman -S arm-none-eabi-newlib
-curl -LsSf https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
-
-cd nrf52
-# The XIAO ships with the UF2 bootloader and the chip locked for debugging.
-# The first time, erase it all (this removes the UF2 bootloader):
-probe-rs erase --chip nRF52840_xxAA --allow-erase-all
-
-# Build, flash and stream the log (probe-rs is the cargo runner)
-cargo run --release
-```
-
-The firmware is linked at address 0 (`nrf52/memory.x`) and keeps debugging
-enabled, so later flashes need no erase. To go back to UF2, flash Seeed's
-bootloader hex with `probe-rs download --binary-format hex`.
+Power the XIAO from its own USB-C or the battery, not from the Pico. A locked
+chip needs `probe-rs erase --chip nRF52840_xxAA --allow-erase-all` first, which
+also removes the bootloader: flash Seeed's bootloader hex back with
+`probe-rs download --binary-format hex` before flashing the firmware.
 
 **Logging**
 
-[defmt](https://defmt.ferrous-systems.com) over RTT, shown by `cargo run`. The
+[defmt](https://defmt.ferrous-systems.com) over RTT, shown by `cargo probe` (needs the probe). The
 level is `DEFMT_LOG` in `nrf52/.cargo/config.toml` (`info`). A panic or hard
 fault logs and resets the chip.
 

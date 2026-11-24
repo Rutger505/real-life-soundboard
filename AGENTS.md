@@ -21,7 +21,7 @@
 ## nRF52 pitfalls
 
 - Build needs `arm-none-eabi-newlib` (bindgen sysroot `/usr/arm-none-eabi`, `nrf52/.cargo/config.toml`).
-- Flash: `cargo run --release` (runner `probe-rs run --chip nRF52840_xxAA`, defmt over RTT) via SWD probe (Pico debugprobe). Linked at 0x0, no UF2 bootloader; first flash needs `probe-rs erase --chip nRF52840_xxAA --allow-erase-all`.
+- Flash: `cargo run --release` (runner `elf2uf2/`, as in motorized-blinds): writes the UF2 and copies it onto the mounted bootloader drive (double tap reset). `cargo probe --release` flashes over SWD with defmt over RTT. Linked at 0x27000 behind the Adafruit UF2 bootloader + S140 v7.3.0 slot (SoftDevice disabled, SDC linked in); erasing the chip removes the bootloader.
 - **P0.14 (battery divider enable) must stay low**: high puts P0.31 over its max voltage.
 - Measure idle current with the probe unplugged (it keeps debug logic powered).
 

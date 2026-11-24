@@ -2,6 +2,7 @@
 esp32/target/
 esp32/.embuild/
 nrf52/target/
+elf2uf2/target/
 
 # Android
 android/.gradle/
