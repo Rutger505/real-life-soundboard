@@ -36,11 +36,15 @@ fn convert(elf_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     match find_bootloader_drive() {
         Some(drive) => {
             let target = drive.join(uf2_path.file_name().unwrap());
-            // Without the sync the copy waits in the page cache and the board never flashes.
             let mut file = fs::File::create(&target)?;
             file.write_all(&uf2)?;
-            file.sync_all()?;
-            println!("Flashed through {}", drive.display());
+            // Without the sync the copy waits in the page cache and the board never
+            // flashes. The board reboots as soon as it has every block, before the
+            // FAT updates land, so the sync failing then is the expected outcome.
+            match file.sync_all() {
+                Ok(()) => println!("Flashed through {}", drive.display()),
+                Err(_) => println!("Flashed through {}, board rebooted", drive.display()),
+            }
         }
         None => println!(
             "No UF2 drive mounted. Double tap reset on the board, then drag the file onto it."
