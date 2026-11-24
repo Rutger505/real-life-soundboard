@@ -266,10 +266,7 @@ private fun Keypad(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         sounds.chunked(3).forEach { row ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.height(IntrinsicSize.Min),
-            ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { entry ->
                     Key(
                         entry = entry,
@@ -278,7 +275,7 @@ private fun Keypad(
                         onPlay = { onPlay(entry.id) },
                         onStop = onStop,
                         onEdit = { onEdit(entry.id) },
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        modifier = Modifier.weight(1f).aspectRatio(1f),
                     )
                 }
             }
