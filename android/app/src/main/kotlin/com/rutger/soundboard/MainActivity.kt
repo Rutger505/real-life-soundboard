@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import com.rutger.soundboard.update.Updater
 
 class MainActivity : ComponentActivity() {
 
@@ -22,7 +23,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        AppLog.init(this)
 
         requestBlePermissions()
         SoundboardService.start(this)
@@ -34,6 +34,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Updater.onForeground()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Updater.foreground = false
     }
 
     private fun requestBlePermissions() {

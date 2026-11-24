@@ -10,9 +10,10 @@
 ## Rules
 
 - **Main only**: commit + push to main, no PRs.
-- **Bump versions with every change**:
-  - Android: `versionCode` +1 and `versionName` (e.g. `1.10` → `1.11`) in `android/app/build.gradle.kts`. The build appends the git commit; without a bump, builds are hard to tell apart on the phone.
-  - Firmware: `version` in `nrf52/Cargo.toml` (or `esp32/Cargo.toml`).
+- **Versions**:
+  - Android: automatic, `versionCode` = git commit count, `versionName` = `v<count>`. Don't set them by hand.
+  - Firmware: bump `version` in `nrf52/Cargo.toml` (or `esp32/Cargo.toml`) with every change.
+- **App release**: commit + push, `./gradlew assembleDebug`, then `android/scripts/publish` (refuses dirty builds). The app auto-updates from `update.json` (README "Updates"). Never `mcli cp` an APK by hand. Debug key `~/.local/share/android/debug.keystore`: losing it breaks updates.
 - **BLE contract stable**: service `12345678-1234-1234-1234-123456789012`, button `…9abc` (read/notify, 1 byte index), battery raw `…9abd` (3 bytes), Battery Service `0x180F` / Level `0x2A19`. Both firmwares share it; the app works with either.
 - Button index = `n - 1` (nRF52, one pin per button) / `r * 3 + c` (ESP32 matrix), same physical layout.
 - **README is authoritative for pins**: check it (and `nrf52/src/main.rs`) before changing any.

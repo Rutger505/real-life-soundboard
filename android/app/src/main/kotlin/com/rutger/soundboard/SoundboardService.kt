@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 
 private const val TAG = "Service"
@@ -95,6 +96,7 @@ class SoundboardService : Service() {
     private fun onButtonPressed(index: Int) {
         if (index !in BUTTON_IDS) return
         SoundboardState.lastButton.value = index
+        SoundboardState.lastPressAt.value = SystemClock.elapsedRealtime()
         SoundboardState.activeButton.value = index
         updateNotification()
 

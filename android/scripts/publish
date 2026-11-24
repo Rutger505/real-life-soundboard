@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Publish the debug APK to the CDN for the in-app updater (app/.../update/Updater.kt).
+#
+#   scripts/publish [apk]        default: app/build/outputs/apk/debug/app-debug.apk
+#   DRY_RUN=1 scripts/publish    all checks, prints the mcli commands instead of running them
+#
+# Order, so update.json never points at a missing or partial file:
+#   soundboard-<versionCode>.apk   what the app downloads (never overwritten)
+#   soundboard.apk                 server-side copy (stable link for manual installs)
+#   update.json                    {versionCode, versionName, apk, sha256, size}
+# Each one is verified by downloading it again. Refuses -dirty / -local builds and versionCodes not
+# newer than the published one. Keeps the newest 3 versioned APKs.
+#
+# Updates only install over the same signing key: $ANDROID_USER_HOME/debug.keystore
+# (~/.local/share/android/debug.keystore, same key on the laptop and Rocky's VM).
+set -euo pipefail
+
+ANDROID_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+APK="${1:-$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk}"
+URL="${SOUNDBOARD_CDN_URL:-https://cdn.rutgerpronk.com/artifacts/soundboard}"
+NAME=soundboard
+KEEP=3
+
+die() { echo "publish: $*" >&2; exit 1; }
+run() { if [ -n "${DRY_RUN:-}" ]; then echo "dry-run: $*" >&2; else "$@"; fi; }
+[ $# -le 1 ] || die "usage: scripts/publish [apk]"
+[ -f "$APK" ] || die "no APK at $APK (./gradlew assembleDebug)"
+
+# The CDN alias is rcdn on Rocky's VM and homecdn on the laptop.
+if [ -n "${SOUNDBOARD_CDN_DEST:-}" ]; then
+  DEST="$SOUNDBOARD_CDN_DEST"
+else
+  for alias in rcdn homecdn; do
+    if mcli alias list "$alias" >/dev/null 2>&1; then DEST="$alias/artifacts/soundboard"; break; fi
+  done
+  [ -n "${DEST:-}" ] || die "no mcli alias rcdn or homecdn (or set SOUNDBOARD_CDN_DEST)"
+fi
+
+for sdk in "${ANDROID_HOME:-}" "$HOME/.local/share/android-sdk" "$HOME/Android/Sdk"; do
+  [ -n "$sdk" ] && [ -d "$sdk/build-tools" ] && { ANDROID_HOME="$sdk"; break; }
+done
+AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)"
+
+TMP="$(mktemp -d /tmp/soundboard-publish.XXXXXX)"
+trap 'rm -rf "$TMP"' EXIT
+
+badging="$("$AAPT2" dump badging "$APK" | awk 'NR == 1')"  # not head: SIGPIPE + pipefail
+[ "$(sed -n "s/.*package: name='\([^']*\)'.*/\1/p" <<<"$badging")" = com.rutger.soundboard ] || die "not a com.rutger.soundboard APK: $badging"
+code="$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"$badging")"
+name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$badging")"
+[ -n "$code" ] && [ -n "$name" ] || die "could not read version from: $badging"
+case "$name" in *-dirty*) die "$name is a dirty build: commit first";; esac
+case "$name" in *-local*) die "$name has a SOUNDBOARD_UPDATE_URL override: rebuild without it";; esac
+
+status="$(curl -sS -o "$TMP/live.json" -w '%{http_code}' -H 'Cache-Control: no-cache' "$URL/update.json")" || die "can't reach $URL"
+published=""
+case "$status" in
+  404) ;; # first publish
+  200) published="$(sed -n 's/.*"versionCode": *\([0-9]*\).*/\1/p' "$TMP/live.json")"
+       [ -n "$published" ] || die "live update.json unreadable: $(head -c 200 "$TMP/live.json")";;
+  *) die "GET $URL/update.json: HTTP $status";;
+esac
+if [ -n "$published" ] && [ "$code" -le "$published" ]; then
+  die "versionCode $code is not newer than published $published"
+fi
+
+sha="$(sha256sum "$APK" | cut -d' ' -f1)"
+size="$(stat -c %s "$APK")"
+versioned="$NAME-$code.apk"
+echo "publishing $name ($code) to $DEST"
+
+verify() { # remote-name expected-sha256
+  [ -n "${DRY_RUN:-}" ] && { echo "dry-run: verify $URL/$1"; return; }
+  local got
+  got="$(curl -fsS -H 'Cache-Control: no-cache' "$URL/$1" | sha256sum | cut -d' ' -f1)"
+  [ "$got" = "$2" ] || die "verify $URL/$1 failed: sha256 $got, expected $2"
+}
+
+run mcli cp --quiet "$APK" "$DEST/$versioned" >/dev/null
+verify "$versioned" "$sha"
+run mcli cp --quiet --disable-multipart "$DEST/$versioned" "$DEST/$NAME.apk" >/dev/null
+verify "$NAME.apk" "$sha"
+printf '{"versionCode": %s, "versionName": "%s", "apk": "%s", "sha256": "%s", "size": %s}\n' \
+  "$code" "$name" "$versioned" "$sha" "$size" >"$TMP/update.json"
+run mcli cp --quiet "$TMP/update.json" "$DEST/update.json" >/dev/null
+verify update.json "$(sha256sum "$TMP/update.json" | cut -d' ' -f1)"
+
+# Newest $KEEP stay, so a phone mid-download still finds its file.
+if [ -z "${DRY_RUN:-}" ]; then
+  mcli ls "$DEST/" | grep -o "$NAME-[0-9]*\.apk" | sort -t- -k2 -n | head -n -"$KEEP" |
+    while read -r old; do mcli rm --quiet "$DEST/$old" >/dev/null && echo "pruned $old"; done
+else
+  echo "dry-run: prune $DEST/$NAME-*.apk to newest $KEEP"
+fi
+
+echo "${DRY_RUN:+dry-run: }published $name ($code) sha256=$sha"
+echo "$URL/$NAME.apk"

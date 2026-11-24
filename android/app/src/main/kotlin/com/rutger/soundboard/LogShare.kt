@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Process
 import androidx.core.content.FileProvider
+import com.rutger.soundboard.update.Updater
 import java.io.File
 import java.io.Writer
 import java.time.Instant
@@ -42,7 +43,8 @@ object LogShare {
         }
         val out = File(dir, "soundboard-logs-$stamp.txt")
         out.bufferedWriter().use { w ->
-            w.appendLine("Soundboard ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            w.appendLine("Soundboard ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_HASH})")
+            w.appendLine("Update: ${Updater.describe()}")
             w.appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             w.appendLine("Collected: ${LocalDateTime.now()}")
             // From disk: the in-memory session is empty while the service isn't running.

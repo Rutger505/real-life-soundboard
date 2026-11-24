@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.rutger.soundboard.update.Updater
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -72,6 +74,7 @@ fun SoundboardScreen(viewModel: SoundboardViewModel) {
             battery = battery,
             onBattery = { showBatteryStats = true },
         )
+        UpdateCard()
 
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -189,6 +192,7 @@ private fun OverflowMenu() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
+    val update by Updater.status.collectAsState()
     Box {
         IconButton(onClick = { open = true }) {
             Icon(Icons.Outlined.MoreVert, contentDescription = "More")
@@ -205,14 +209,63 @@ private fun OverflowMenu() {
             DropdownMenuItem(
                 text = {
                     Text(
-                        "Version ${BuildConfig.VERSION_NAME}",
+                        versionLine(update),
                         fontFamily = DataFont,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 },
-                enabled = false,
-                onClick = {},
+                leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
+                onClick = { Updater.checkNow() },
             )
+        }
+    }
+}
+
+private fun versionLine(status: Updater.Status): String {
+    val newer = Updater.available(status)
+    val outcome = when {
+        newer != null -> "${newer.versionName} available"
+        status is Updater.Status.Checking -> "checking…"
+        status is Updater.Status.UpToDate -> "up to date"
+        status is Updater.Status.Failed -> "check failed"
+        else -> null
+    }
+    return listOfNotNull(BuildConfig.VERSION_NAME, outcome).joinToString(" · ")
+}
+
+/** Shown while a newer version exists; failures show the real error. */
+@Composable
+private fun UpdateCard() {
+    val status by Updater.status.collectAsState()
+    val release = Updater.available(status) ?: return
+    val (text, action) = when (val s = status) {
+        is Updater.Status.Downloading -> "Downloading ${release.versionName}: ${s.bytes * 100 / release.size.coerceAtLeast(1)}%" to null
+        is Updater.Status.Installing -> "Installing ${release.versionName}…" to null
+        is Updater.Status.Deferred -> "${release.versionName} installs once the soundboard is idle" to "Install"
+        is Updater.Status.Failed -> "Update ${release.versionName} failed: ${s.message}" to "Retry"
+        else -> "${release.versionName} available" to "Install"
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(KeyShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+            .heightIn(min = 36.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (status is Updater.Status.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (action != null) {
+            TextButton(onClick = Updater::installNow) {
+                Text(action)
+            }
         }
     }
 }

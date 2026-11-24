@@ -29,7 +29,7 @@ object AppLog {
             write(line("E", "Crash", "uncaught on ${thread.name}: " + Log.getStackTraceString(e)))
             previous?.uncaughtException(thread, e)
         }
-        i("App", "---- process start, v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ----")
+        i("App", "---- process start, ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_HASH}) ----")
     }
 
     /** Oldest first. */

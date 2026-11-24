@@ -357,6 +357,34 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 4. Tap the folder icon on each button slot to assign an audio file.
 5. Press a physical button — the LED blinks and the audio plays on the phone.
 
+### Updates
+
+The app updates itself from the CDN (`android/app/.../update/Updater.kt`), like Fastify and
+Workstation Connect:
+
+- **Check** `https://cdn.rutgerpronk.com/artifacts/soundboard/update.json` at process start, when the
+  app comes to the foreground (at most once a minute), from the menu (tap the version line) and every
+  15 min from WorkManager (any network), also while the app is closed.
+- **Download** the APK and verify its sha256, then **install** silently via a PackageInstaller session
+  (Android 12+, "install unknown apps" granted for Soundboard). No install constraints: the BLE
+  foreground service always counts as "foreground", so Android would never install. Own guard
+  instead: not within 2 min of a key press; the next check installs it.
+- The install kills the process; `PackageReplacedReceiver` (MY_PACKAGE_REPLACED) restarts the service,
+  so the soundboard reconnects on its own.
+- Not silent (permission missing, Android asks anyway): a card under the header and a notification;
+  tap Install.
+- `versionCode` = git commit count, `versionName` = `v<count>` (`-dirty` for uncommitted changes,
+  `-local` with an update URL override). The git hash is in the logs and Share logs.
+- **Publish** (after committing and pushing): `./gradlew assembleDebug`, then `android/scripts/publish`
+  (`DRY_RUN=1` checks only). It uploads `soundboard-<versionCode>.apk`, copies it server side to
+  `soundboard.apk` (stable link for manual installs), then writes `update.json`, verifying each one.
+  It refuses `-dirty`/`-local` builds and versionCodes that aren't newer, and keeps 3 versioned APKs.
+  Never copy an APK to the CDN by hand: the phone wouldn't see it.
+- Updates only install over the same signing key: the debug key in `$ANDROID_USER_HOME/debug.keystore`
+  (`~/.local/share/android/debug.keystore`). Losing it means uninstall + reinstall.
+- Testing the updater: build with `SOUNDBOARD_UPDATE_URL=http://10.0.2.2:<port>/` and serve
+  `update.json` + the APK with `python3 -m http.server`.
+
 ## TODO
 
 ### 32.768 kHz crystal and ESP-IDF light sleep
@@ -408,12 +436,10 @@ Keep GPIO26/27 unused (board fault between them).
 
 ## Versioning
 
-Bump the version with every change you ship:
+Bump the firmware version with every change you ship:
 
-- **Android app:** in `android/app/build.gradle.kts`, raise `versionCode` by one and bump
-  `versionName` (e.g. `1.0` → `1.1`). The build appends the git commit (`1.1+<hash>`, with
-  `-dirty` for uncommitted changes) and the app shows it under the grid, so you can tell
-  which build is installed on the phone.
+- **Android app:** automatic: `versionCode` is the git commit count and the app shows
+  `v<count>` in its menu (see [Updates](#updates)). Nothing to bump.
 - **Firmware:** bump `version` in `esp32/Cargo.toml` or `nrf52/Cargo.toml`.
 
 ## Project structure

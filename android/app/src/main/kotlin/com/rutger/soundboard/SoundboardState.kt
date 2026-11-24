@@ -16,6 +16,9 @@ object SoundboardState {
     val activeButton = MutableStateFlow<Int?>(null)
     val lastButton = MutableStateFlow<Int?>(null)
 
+    /** elapsedRealtime of the last key press, 0 = none: the updater doesn't install mid-use. */
+    val lastPressAt = MutableStateFlow(0L)
+
     /** Latest battery values; null while disconnected or on firmware without battery support. */
     val battery = MutableStateFlow<BatteryReading?>(null)
 
