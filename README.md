@@ -1,10 +1,10 @@
 # Real Live Soundboard
 
-A Bluetooth soundboard: press a physical button on an ESP32 and the paired Android phone plays the corresponding audio clip.
+A Bluetooth soundboard: press a physical button on the board and the paired Android phone plays the corresponding audio clip.
 
 ## What it is
 
-9 physical buttons in a 3x3 matrix, wired to an ESP32, send BLE GATT notifications to an Android app. Each button maps to an audio file you configure via the app. Press a button → hear a sound.
+9 physical buttons, wired to a Seeed XIAO nRF52840 (current) or an ESP32 (first version, retired), send BLE GATT notifications to an Android app. Each button maps to an audio file you configure via the app. Press a button → hear a sound.
 
 The Android app runs a **foreground service**, so the BLE connection and audio playback keep working while you use your phone normally, with the screen off, or with the app closed. An ongoing notification shows the connection status and the last button that was pressed.
 
@@ -353,7 +353,7 @@ Output: `android/app/build/outputs/apk/debug/app-debug.apk` (~8.7 MB).
 **Setup:**
 1. Install the APK on your Android device (API 26+).
 2. Grant Bluetooth and storage permissions when prompted.
-3. The app automatically scans for the ESP32 by service UUID.
+3. The app automatically scans for the soundboard by service UUID.
 4. Tap the folder icon on each button slot to assign an audio file.
 5. Press a physical button — the LED blinks and the audio plays on the phone.
 
