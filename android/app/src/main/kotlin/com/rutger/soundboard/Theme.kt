@@ -12,41 +12,39 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 
-// Palette taken from the launcher icon: indigo keypad, one lit orange key.
-private val Ink = Color(0xFF1C1A2B)
-private val KeyDark = Color(0xFF4A4766)
-private val Lit = Color(0xFFFF7A3D)
+private val Ink = Color(0xFF1A1C24)
+private val Night = Color(0xFF0F1220)
 
 private val DarkColors = darkColorScheme(
-    primary = Lit,
-    onPrimary = Ink,
-    background = Color(0xFF13121D),
-    onBackground = Color(0xFFEDECF5),
-    surface = Ink,
-    onSurface = Color(0xFFEDECF5),
-    surfaceVariant = Color(0xFF292739),
-    onSurfaceVariant = Color(0xFFA8A5C0),
-    surfaceContainerHigh = Color(0xFF242233),
-    surfaceContainerLow = Color(0xFF1A1927),
-    outline = KeyDark,
-    outlineVariant = Color(0xFF34324A),
+    primary = Color(0xFF6E8BFF),
+    onPrimary = Night,
+    background = Night,
+    onBackground = Color(0xFFE9ECF7),
+    surface = Night,
+    onSurface = Color(0xFFE9ECF7),
+    surfaceVariant = Color(0xFF1B2033),
+    onSurfaceVariant = Color(0xFF9CA4C2),
+    surfaceContainerHigh = Color(0xFF1B2033),
+    surfaceContainerLow = Color(0xFF151A2A),
+    outline = Color(0xFF3A4366),
+    outlineVariant = Color(0xFF2A3150),
     error = Color(0xFFFF7070),
-    onError = Ink,
+    onError = Night,
 )
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFFE8622A),
+    primary = Color(0xFF2F5BEA),
     onPrimary = Color.White,
-    background = Color(0xFFF1F0F7),
+    background = Color(0xFFF6F4EF),
     onBackground = Ink,
-    surface = Color(0xFFFAFAFD),
+    surface = Color(0xFFF6F4EF),
     onSurface = Ink,
     surfaceVariant = Color.White,
-    onSurfaceVariant = Color(0xFF5B5776),
-    surfaceContainerHigh = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF6F5FA),
-    outline = Color(0xFFC9C6DC),
-    outlineVariant = Color(0xFFDDDBEA),
+    onSurfaceVariant = Color(0xFF5C5F6B),
+    surfaceContainerHigh = Color.White,
+    surfaceContainerLow = Color(0xFFFBFAF7),
+    outline = Color(0xFFCFCABD),
+    outlineVariant = Color(0xFFE2DED4),
     error = Color(0xFFC62828),
     onError = Color.White,
 )
