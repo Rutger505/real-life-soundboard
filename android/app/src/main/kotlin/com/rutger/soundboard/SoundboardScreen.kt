@@ -248,7 +248,7 @@ private fun BleStatusBar(connected: Boolean) {
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = if (connected) "ESP32 connected" else "Scanning for ESP32…",
+            text = if (connected) "Soundboard connected" else "Scanning for soundboard…",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

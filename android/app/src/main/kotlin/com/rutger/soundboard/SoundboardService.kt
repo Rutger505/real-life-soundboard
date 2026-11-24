@@ -162,7 +162,7 @@ class SoundboardService : Service() {
                 CHANNEL_ID,
                 "Soundboard",
                 NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = "Keeps the ESP32 connection alive" }
+            ).apply { description = "Keeps the soundboard connection alive" }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
@@ -174,7 +174,7 @@ class SoundboardService : Service() {
 
         val battery = SoundboardState.battery.value
 
-        val status = if (connected) "ESP32 connected" else "Reconnecting…"
+        val status = if (connected) "Soundboard connected" else "Reconnecting…"
         val batteryText = battery?.let {
             " • Battery ${it.percent}%" + if (it.percent < LOW_BATTERY_PERCENT) " (low!)" else ""
         } ?: ""
