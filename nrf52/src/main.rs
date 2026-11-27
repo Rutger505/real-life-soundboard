@@ -80,16 +80,32 @@ async fn main(spawner: Spawner) {
 
     // One pin per button, each switching to GND. D6 is the LED, so the
     // buttons skip it; D10 is free.
+    // Order is based on most optimial wiring inside case.
+    // Every Clumn has sam color wire.
+    // Column one (button 0,3,6), goes to back most pins (d7-9).
+    // Buttons -> Board pins:
+    // Column 1:
+    // 4 -> D7
+    // 7 -> D8
+    // 1 -> D9
+    // Column 2:
+    // 5 -> D5
+    // 8 -> D4
+    // 2 -> D3
+    // Column 3:
+    // 6 -> D2
+    // 9 -> D1
+    // 3 -> D0
     let buttons = [
-        Input::new(p.P0_02, Pull::Up), // D0
-        Input::new(p.P0_03, Pull::Up), // D1
-        Input::new(p.P0_28, Pull::Up), // D2
-        Input::new(p.P0_29, Pull::Up), // D3
-        Input::new(p.P0_04, Pull::Up), // D4
-        Input::new(p.P0_05, Pull::Up), // D5
-        Input::new(p.P1_12, Pull::Up), // D7
-        Input::new(p.P1_13, Pull::Up), // D8
         Input::new(p.P1_14, Pull::Up), // D9
+        Input::new(p.P0_29, Pull::Up), // D3
+        Input::new(p.P0_02, Pull::Up), // D0
+        Input::new(p.P1_12, Pull::Up), // D7
+        Input::new(p.P0_05, Pull::Up), // D5
+        Input::new(p.P0_28, Pull::Up), // D2
+        Input::new(p.P1_13, Pull::Up), // D8
+        Input::new(p.P0_04, Pull::Up), // D4
+        Input::new(p.P0_03, Pull::Up), // D1
     ];
     // External status LED on D6, active-high through its resistor.
     let led = Output::new(p.P1_11, Level::Low, OutputDrive::Standard);
@@ -99,7 +115,8 @@ async fn main(spawner: Spawner) {
     let battery = battery::Battery::new(p.SAADC, p.P0_31, p.P0_14, p.P0_17);
 
     // Radio scheduler: RTC0, TIMER0, TEMP and PPI channels belong to it.
-    let mpsl_p = mpsl::Peripherals::new(p.RTC0, p.TIMER0, p.TEMP, p.PPI_CH19, p.PPI_CH30, p.PPI_CH31);
+    let mpsl_p =
+        mpsl::Peripherals::new(p.RTC0, p.TIMER0, p.TEMP, p.PPI_CH19, p.PPI_CH30, p.PPI_CH31);
     let lfclk_cfg = mpsl::raw::mpsl_clock_lfclk_cfg_t {
         source: mpsl::raw::MPSL_CLOCK_LF_SRC_XTAL as u8,
         rc_ctiv: 0,
@@ -108,15 +125,17 @@ async fn main(spawner: Spawner) {
         skip_wait_lfclk_started: false,
     };
     static MPSL: StaticCell<MultiprotocolServiceLayer> = StaticCell::new();
-    let mpsl = MPSL.init(unwrap!(MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg)));
+    let mpsl = MPSL.init(unwrap!(MultiprotocolServiceLayer::new(
+        mpsl_p, Irqs, lfclk_cfg
+    )));
     spawner.spawn(unwrap!(mpsl_task(mpsl)));
 
     spawner.spawn(unwrap!(buttons::run(buttons)));
     spawner.spawn(unwrap!(led::run(led)));
 
     let sdc_p = sdc::Peripherals::new(
-        p.PPI_CH17, p.PPI_CH18, p.PPI_CH20, p.PPI_CH21, p.PPI_CH22, p.PPI_CH23, p.PPI_CH24, p.PPI_CH25, p.PPI_CH26,
-        p.PPI_CH27, p.PPI_CH28, p.PPI_CH29,
+        p.PPI_CH17, p.PPI_CH18, p.PPI_CH20, p.PPI_CH21, p.PPI_CH22, p.PPI_CH23, p.PPI_CH24,
+        p.PPI_CH25, p.PPI_CH26, p.PPI_CH27, p.PPI_CH28, p.PPI_CH29,
     );
     let mut rng = rng::Rng::new(p.RNG, Irqs);
     let mut sdc_mem = sdc::Mem::<SDC_MEM>::new();
